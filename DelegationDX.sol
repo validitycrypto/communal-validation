@@ -25,6 +25,14 @@ contract DelegationDX {
   } 
 
 
+  modifier only_admin()
+  {
+
+    if(msg.sender != admin) throw;
+       _;
+
+  }
+
   uint256 constant VOTE = 10000;
   byte constant POS = 0x01;
   byte constant NEG = 0x01;
@@ -45,7 +53,7 @@ contract DelegationDX {
 
   }
 
-  function delegationCreate(string project,string ticker,string ctype) 
+  function delegationCreate(string project,string ticker,string ctype) only_admin
   {
 
     Dta memory input = Dta({tickr: ticker, ctype: ctype, negative: 0 , positive: 0, result: NA}); 
@@ -53,7 +61,7 @@ contract DelegationDX {
 
   }
 
-  function delegationResults() 
+  function delegationResults() public
   {
 
 
@@ -62,7 +70,7 @@ contract DelegationDX {
   }
 
 
-  function voteSubmission(string name, string project, byte OPTION) 
+  function voteSubmission(string name, string project, byte OPTION) public
   {
 
     require(OPTION == NEG || OPTION == POS);
@@ -96,7 +104,7 @@ contract DelegationDX {
   }
 
 
-  function voteRegister() 
+  function voteRegister() public
   {
 
       Votee memory x = Votee({username: name, delegation_count: 0, vote_count: 0, pos_votes: 0, neg_votes: 0});
@@ -107,7 +115,8 @@ contract DelegationDX {
 
 
 
-  function voteCount() {
+  function voteCount() only_admin
+  {
 
 
 
