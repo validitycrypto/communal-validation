@@ -13,7 +13,8 @@ contract DelegationDX {
 
     }
 
-  struct Votee {
+  struct Votee 
+  {
 
         string username;
         string[] delegates;
@@ -41,7 +42,7 @@ contract DelegationDX {
   mapping(string => Dta) delegate; 
   mapping(address => Votee) voter; 
 
-  function delegationReward() private constant returns (uint256) 
+  function delegationReward() internal constant returns (uint256) 
   {
 
     uint256 wager = balances[tx.origin];
