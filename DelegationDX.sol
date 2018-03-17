@@ -30,7 +30,6 @@ contract DelegationDX {
   byte constant NEG = 0x01;
   string constant NA = "NA";
 
-  mapping (address => mapping (address => uint256)) internal allowed;
   mapping(string => Dta) delegate; 
   mapping(address => Votee) voter; 
 
