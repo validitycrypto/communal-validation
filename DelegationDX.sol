@@ -33,7 +33,8 @@ contract DelegationDX {
   mapping(string => Dta) delegate; 
   mapping(address => Votee) voter; 
 
-  function delegationReward() private constant returns (uint256) {
+  function delegationReward() private constant returns (uint256) 
+  {
 
     uint256 wager = balances[tx.origin];
     require(wager >= VOTE);
@@ -44,14 +45,16 @@ contract DelegationDX {
 
   }
 
-  function delegationCreate(string project,string ticker,string ctype) {
+  function delegationCreate(string project,string ticker,string ctype) 
+  {
 
     Dta memory input = Dta({tickr: ticker, ctype: ctype, negative: 0 , positive: 0, result: NA}); 
     delegate[project] = input; 
 
   }
 
-  function delegationResults() {
+  function delegationResults() 
+  {
 
 
    
@@ -59,7 +62,8 @@ contract DelegationDX {
   }
 
 
-  function voteSubmission(string name, string project, byte OPTION) {
+  function voteSubmission(string name, string project, byte OPTION) 
+  {
 
     require(OPTION == NEG || OPTION == POS);
 
@@ -92,7 +96,8 @@ contract DelegationDX {
   }
 
 
-  function voteRegister() {
+  function voteRegister() 
+  {
 
       Votee memory x = Votee({username: name, delegation_count: 0, vote_count: 0, pos_votes: 0, neg_votes: 0});
 
