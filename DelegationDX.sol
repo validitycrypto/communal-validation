@@ -1,6 +1,7 @@
 pragma solidity ^0.4.18;
 
-contract DelegationDX {
+contract DelegationDX
+{
 
     struct Dta 
     {
@@ -74,19 +75,18 @@ contract DelegationDX {
   function voteSubmission(string name, string project, byte OPTION) public
   {
 
-    require(OPTION == NEG || OPTION == POS);
-
-    Votee storage x = voter[msg.sender];
-    if(x.delegation_count == 0){ voteRegister();}
-    uint y = 0;
     string prev;
-
-    for (y; y < x.delegates.length ; y++) {
+    require(OPTION == NEG || OPTION == POS);
+    Votee storage x = voter[msg.sender];
+    if(x.delegation_count == 0){voteRegister();}
+    
+    for(y = 0 ; y < x.delegates.length ; y++)
+    {
 
         prev = x.delegates[y];
-
-        if(keccak256(prev) == keccak256(project)){ revert; }
-        else if(keccak256(prev) != keccak256(project)){ continue; }
+        
+        if(keccak256(prev) == keccak256(project)){revert();}
+        else if(keccak256(prev) != keccak256(project)){continue;}
 
     }
 
@@ -94,10 +94,8 @@ contract DelegationDX {
     require(output.result == NA);
     uint256 voting_weight = delegationReward();
 
-    if(OPTION == POS){ output.positive += voting_weight;
-                           x.pos_vote  += voting_weight; } 
-    else if(OPTION == NEG){ output.negative += voting_weight;
-                                x.neg_vote  += voting_weight; } 
+    if(OPTION == POS){output.positive += voting_weight; x.pos_vote  += voting_weight;} 
+    else if(OPTION == NEG){output.negative += voting_weight; x.neg_vote  += voting_weight;} 
     x.delegation_count++;
     x.vote_count += voting_weight;
     x.delgates.push(name)
@@ -109,7 +107,6 @@ contract DelegationDX {
   {
 
       Votee memory x = Votee({username: name, delegation_count: 0, vote_count: 0, pos_votes: 0, neg_votes: 0});
-
       voter[msg.sender] = x; 
 
   }
