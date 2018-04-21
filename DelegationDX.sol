@@ -14,18 +14,6 @@ contract DelegationDX
 
     }
 
-  struct Votee 
-  {
-
-        string username;
-        string[] delegates;
-        uint256 delegation_count;
-        uint256 vote_count;
-        uint256 neg_votes;
-        uint256 pos_votes;
-
-  } 
-
 
   modifier only_admin()
   {
@@ -71,7 +59,6 @@ contract DelegationDX
 
   }
 
-
   function voteSubmission(string name, string project, byte OPTION) public
   {
 
@@ -96,21 +83,9 @@ contract DelegationDX
 
     if(OPTION == POS){output.positive += voting_weight; x.pos_vote  += voting_weight;} 
     else if(OPTION == NEG){output.negative += voting_weight; x.neg_vote  += voting_weight;} 
-    x.delegation_count++;
-    x.vote_count += voting_weight;
-    x.delgates.push(name)
+
 
   }
-
-
-  function voteRegister() public
-  {
-
-      Votee memory x = Votee({username: name, delegation_count: 0, vote_count: 0, pos_votes: 0, neg_votes: 0});
-      voter[msg.sender] = x; 
-
-  }
-
 
 
   function voteCount() only_admin
