@@ -1,6 +1,6 @@
 pragma solidity ^0.4.18;
 
-contract DelegationDX
+contract DXDelegation
 {
 
     struct Dta 
@@ -13,7 +13,6 @@ contract DelegationDX
         string result;
 
     }
-
 
   modifier only_admin()
   {
@@ -29,7 +28,6 @@ contract DelegationDX
   string constant NA = "NA";
 
   mapping(string => Dta) delegate; 
-  mapping(address => Votee) voter; 
 
   function delegationReward() internal constant returns (uint256) 
   {
