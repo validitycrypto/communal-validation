@@ -1,15 +1,18 @@
 pragma solidity ^0.4.18;
 
+import "./ERC20.sol";
+
 contract DXDelegation
 {
 
-    struct Dta 
+    struct Proposal 
     {
 
         string tickr;
         string ctype;
         uint256 positive;
         uint256 negative;
+        address[] voted;
         string result;
 
     }
@@ -22,29 +25,36 @@ contract DXDelegation
 
   }
 
+  ERC20 public DX;
   uint256 constant VOTE = 10000;
   byte constant POS = 0x01;
   byte constant NEG = 0x01;
   string constant NA = "NA";
 
-  mapping(string => Dta) delegate; 
-
+  mapping(string => Proposal) delegate; 
+  
+  function initialiseToken(address token) public {
+  
+      DX = ERC20(token);
+  
+  }
+    
   function delegationReward() internal constant returns (uint256) 
   {
 
-    uint256 wager = balances[tx.origin];
+    uint256 wager = DX.balanceOf(msg.sender);
     require(wager >= VOTE);
     uint256 reward = wager/VOTE;
-    balances[tx.origin] += reward;
+    DX.transferFrom(this,msg.sender,reward);
 
     return wager;
 
   }
 
-  function delegationCreate(string project,string ticker,string ctype) only_admin
+  function delegationCreate(string project, string ticker, string ctype) only_admin
   {
-
-    Dta memory input = Dta({tickr: ticker, ctype: ctype, negative: 0 , positive: 0, result: NA}); 
+  
+    Proposal memory input = Proposal({tickr: ticker, ctype: ctype, negative: 0 , positive: 0, result: NA}); 
     delegate[project] = input; 
 
   }
@@ -61,9 +71,16 @@ contract DXDelegation
   {
 
     string prev;
+    string user;
+    string[] exec;
+    uint del_count;
+    uint v_count;
+    uint p_vote;
+    uint n_vote;
     require(OPTION == NEG || OPTION == POS);
-    Votee storage x = voter[msg.sender];
-    if(x.delegation_count == 0){voteRegister();}
+    (user,exec,del_count,v_count,p_vote,n_vote) = DX.viewStats();
+    
+    if(del_count == 0){voteRegister();}
     
     for(y = 0 ; y < x.delegates.length ; y++)
     {
@@ -75,13 +92,10 @@ contract DXDelegation
 
     }
 
-    Dta storage output = delegate[project];
+    Proposal storage output = delegate[project];
     require(output.result == NA);
-    uint256 voting_weight = delegationReward();
-
-    if(OPTION == POS){output.positive += voting_weight; x.pos_vote  += voting_weight;} 
-    else if(OPTION == NEG){output.negative += voting_weight; x.neg_vote  += voting_weight;} 
-
+    uint256 voting_weight = delegationReward(); 
+    DX.delegationEvent(msg.sender, voting_weight, OPTION, project);
 
   }
 
