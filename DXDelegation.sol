@@ -14,6 +14,7 @@ contract DXDelegation
         uint256 negative;
         address[] voted;
         uint256[] weight;
+        byte[] optn;
         string result;
 
     }
@@ -99,6 +100,7 @@ contract DXDelegation
     uint256 voting_weight = delegationReward(msg.sender);
     output.voted.push(msg.sender);
     output.weight.push(voting_weight);
+    output.optn.push(OPTION);
     if(OPTION == POS{output.negative += voting_weight;}
     else if(OPTION == NEG){output.positive += voting_weight;}
     Proposal memory input = Proposal({tickr: output.ticker, 
@@ -112,22 +114,42 @@ contract DXDelegation
 
   }
 
-    function delegationReward(address target) internal constant returns (uint256) 
+    function delegationCount(address target) internal constant returns (uint256) 
   {
 
     uint256 wager = DX.balanceOf(target);
     require(wager >= VOTE);
     uint256 reward = wager/VOTE;
-    DX.transferFrom(this,target,reward);
     return wager;
 
   }
 
-  function voteCount() only_admin
+  function voteCount(string project) only_admin
   {
+    uint256 livebalance;
+    uint256 votebalance;
+    address voter;
+    byte option;
+    Proposal storage output = delegate[project];
     
-  
-
+    for(uint x = 0 ; x < output.voted ; x++)
+    {
+    
+        voter = output.voted[x];
+        votebalance = output.weight[x];
+        option = output.optn;
+        livebalance = DX.balanceOf(voter);
+        livebalance = livebalance/VOTE;
+        
+        if(votebalance > livebalance)
+        {
+             
+             if(option == POS){output.positive -= votebalance; output.positive += livebalance;} 
+             else if(option == NEG){output.negative -= votebalance; output.negative += livebalance;} 
+        
+        }
+            
+        delegationReward(voter);
 
   }
   
