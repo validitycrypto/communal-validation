@@ -1,6 +1,6 @@
 pragma solidity ^0.4.18;
 
-import "./ERC20.sol";
+import "./DX.sol";
 
 contract DXDelegation
 {
@@ -14,8 +14,8 @@ contract DXDelegation
         uint256 negative;
         address[] voted;
         uint256[] weight;
-        byte[] optn;
-        string result;
+        bytes1[] optn;
+        bytes1 result;
 
     }
 
@@ -27,23 +27,23 @@ contract DXDelegation
 
     }
 
-    ERC20 public DX;
+    DX public DXTOKEN;
+    bytes1 constant POS = 0x01;
+    bytes1 constant NEG = 0x02;
+    bytes1 constant NA = 0xff;
     uint256 constant VOTE = 10000;
-    byte constant POS = 0x01;
-    byte constant NEG = 0x02;
-    string constant NA = "NA";
     address public admin  = msg.sender;
 
-    mapping(string => Proposal) delegate;
+    mapping(bytes32 => Proposal) delegate;
 
     function initialiseToken(address token) public
     {
 
-        DX = ERC20(token);
+        DXTOKEN = DX(token);
 
     }
 
-    function delegationCreate(string project, string ticker, string ctype) public only_admin
+    function delegationCreate(bytes32 project, string ticker, string ctype) public only_admin
     {
 
         Proposal storage output = delegate[project];
@@ -60,7 +60,7 @@ contract DXDelegation
 
     }
 
-    function delegationRetrial(string project,string ticker, string ctype) public only_admin
+    function delegationRetrial(bytes32 project, string ticker, string ctype) public only_admin
     {
 
         delete delegate[project];
@@ -68,7 +68,7 @@ contract DXDelegation
 
     }
 
-    function delegationResult(string project) public constant returns (string, string, uint256, uint256, string)
+    function delegationResult(bytes32 project) public constant returns (string, string, uint256, uint256, bytes1)
     {
 
         Proposal storage output = delegate[project];
@@ -76,23 +76,21 @@ contract DXDelegation
 
     }
 
-    function voteSubmit(string name, string project, byte OPTION) public
+    function voteSubmit(string name, bytes32 project, bytes1 OPTION) public
     {
 
-        uint del_count;
-        uint v_count;
-        uint p_vote;
-        uint n_vote;
-        string storage user;
-        string[] storage dtabase;
+        uint256 del_count;
+        uint256 v_count;
+        string memory user;
+        bytes32[] memory dtabase;
         require(OPTION == NEG || OPTION == POS);
-        (user, dtabase, del_count, v_count ,p_vote, n_vote) = DX.viewStats();
-        if(del_count == 0){DX.voteRegister();}
+        (user, dtabase, del_count, v_count) = DXTOKEN.viewStats(msg.sender);
+        if(del_count == 0){DXTOKEN.registerVoter(name);}
 
         for(uint y = 0 ; y < dtabase.length ; y++)
         {
 
-            string storage prev = dtabase[y];
+            bytes32 prev = dtabase[y];
             if(keccak256(prev) == keccak256(project)){revert();}
 
         }
@@ -106,43 +104,44 @@ contract DXDelegation
         if(OPTION == POS){output.negative += voting_weight;}
         else if(OPTION == NEG){output.positive += voting_weight;}
         Proposal memory input = Proposal({
-            tickr: output.ticker,
+            tickr: output.tickr,
             ctype: output.ctype,
             negative: output.negative,
             positive: output.positive,
             voted: output.voted,
             weight: output.weight,
+            optn: output.optn,
             result: NA});
         delegate[project] = input;
-        DX.delegationEvent(msg.sender, voting_weight, OPTION, project);
+        DXTOKEN.delegationEvent(msg.sender, voting_weight, OPTION, project);
 
     }
 
     function delegationCount(address target) internal constant returns (uint256)
     {
 
-        uint256 wager = DX.balanceOf(target);
+        uint256 wager = DXTOKEN.balanceOf(target);
         require(wager >= VOTE);
         uint256 reward = wager/VOTE;
         return reward;
 
     }
 
-    function voteCount(string project) public only_admin
+    function voteCount(bytes32 project) public only_admin
     {
         uint256 livebalance;
         uint256 votebalance;
         address voter;
-        byte option;
+        bytes1 option;
         Proposal storage output = delegate[project];
 
-        for(uint x = 0 ; x < output.voted ; x++)
+        for(uint x = 0 ; x < output.voted.length ; x++)
         {
 
             voter = output.voted[x];
             votebalance = output.weight[x];
             option = output.optn[x];
-            livebalance = DX.balanceOf(voter);
+            livebalance = DXTOKEN.balanceOf(voter);
             livebalance = livebalance/VOTE;
 
             if(votebalance > livebalance)
@@ -157,8 +156,8 @@ contract DXDelegation
 
         }
 
-        if(output.negative > output.postive){output.result = NEG;}
-        else if(output.postive > output.negative){output.result = POS;}
+        if(output.negative > output.positive){output.result = NEG;}
+        else if(output.positive > output.negative){output.result = POS;}
 
     }
 
@@ -166,7 +165,7 @@ contract DXDelegation
     {
 
         uint256 weight = delegationCount(target);
-        DX.transferFrom(this, target, weight);
+        DXTOKEN.transferFrom(this, target, weight);
 
     }
 
