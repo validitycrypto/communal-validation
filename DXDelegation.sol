@@ -149,7 +149,13 @@ contract DXDelegation
         
         }
             
-        delegationReward(voter);
+        votebalance = delegationCount(voter);
+        DX.transferfrom(msg.sender, voter, votebalance);
+        
+    }
+
+    if(output.negative > output.postive){output.result = NEG;}
+    else if(output.postive > output.negative){output.result = POS;}
 
   }
   
