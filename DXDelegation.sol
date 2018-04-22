@@ -137,7 +137,7 @@ contract DXDelegation
     
         voter = output.voted[x];
         votebalance = output.weight[x];
-        option = output.optn;
+        option = output.optn[x];
         livebalance = DX.balanceOf(voter);
         livebalance = livebalance/VOTE;
         
