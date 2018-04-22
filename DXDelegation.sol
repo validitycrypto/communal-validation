@@ -52,6 +52,7 @@ contract DXDelegation
                                      positive: 0,
                                      voted: output.voted,
                                      weight: output.weight,
+                                     optn: output.optn,
                                      result: NA}); 
     delegate[project] = input; 
 
@@ -150,7 +151,6 @@ contract DXDelegation
         }
             
         votebalance = delegationCount(voter);
-        DX.transferfrom(msg.sender, voter, votebalance);
         
     }
 
@@ -159,4 +159,12 @@ contract DXDelegation
 
   }
   
+  function delegationReward(address target) public
+  {
+  
+    uint256 weight = delegationCount(target);
+    DX.transferFrom(this, target, weight);
+  
   }
+  
+}
