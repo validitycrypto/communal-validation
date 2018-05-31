@@ -8,14 +8,14 @@ contract DelegationDX
     struct Proposal
     {
 
-        string tickr;
-        string ctype;
+        bytes32 tickr;
+        bytes32 ctype;
         uint256 positive;
         uint256 negative;
         address[] voted;
         uint256[] weight;
-        bytes1[] optn;
-        bytes1 result;
+        bytes32[] optn;
+        bytes32 result;
 
     }
 
@@ -28,11 +28,16 @@ contract DelegationDX
     }
 
     DX public DXTOKEN;
-    bytes1 constant POS = 0x01;
-    bytes1 constant NEG = 0x02;
-    bytes1 constant NA = 0xff;
-    uint256 constant VOTE = 10000;
+    bytes32 constant public POS = 0x506f736974697665000000000000000000000000000000000000000000000000;
+    bytes32 constant public NEG = 0x4e65676174697665000000000000000000000000000000000000000000000000;
+    uint256 constant public VOTE = 10000;
     address public admin  = msg.sender;
+    uint256 public del_count;
+    uint256 public v_count;
+    uint256 public p_count;
+    uint256 public n_count;
+    bytes32 public user;
+    bytes32 public active;
 
     mapping(bytes32 => Proposal) delegate;
 
@@ -43,9 +48,10 @@ contract DelegationDX
 
     }
 
-    function delegationCreate(bytes32 project, string ticker, string ctype) public only_admin
+    function delegationCreate(bytes32 project, bytes32 ticker, bytes32 ctype) public only_admin
     {
 
+        active = project;
         Proposal storage output = delegate[project];
         Proposal memory input = Proposal({
             tickr: ticker,
@@ -55,12 +61,13 @@ contract DelegationDX
             voted: output.voted,
             weight: output.weight,
             optn: output.optn,
-            result: NA});
+            result: 0});
         delegate[project] = input;
+        DXTOKEN.delegationCreate(project);
 
     }
 
-    function delegationRetrial(bytes32 project, string ticker, string ctype) public only_admin
+    function delegationRetrial(bytes32 project, bytes32  ticker, bytes32  ctype) public only_admin
     {
 
         delete delegate[project];
@@ -68,41 +75,38 @@ contract DelegationDX
 
     }
 
-    function delegationResult(bytes32 project) public constant returns (string, string, uint256, uint256, bytes1)
+    function delegationResult(bytes32 project) public constant returns (bytes32 , bytes32 , address[], uint256, uint256, bytes32)
     {
 
         Proposal storage output = delegate[project];
-        return (output.tickr, output.ctype, output.positive, output.negative, output.result);
+        return (output.tickr, output.ctype, output.voted, output.positive, output.negative, output.result);
 
     }
 
-    function voteSubmit(bytes32 name, bytes32 project, bytes1 OPTION) public
+    function voteSubmit(bytes32 name, bytes32 project, bytes32 OPTION) public
     {
 
-        uint256 del_count;
-        uint256 v_count;
-        bytes32 user;
         bytes32[25] memory dtabase;
-        require(OPTION == NEG || OPTION == POS);
-        (user, dtabase, del_count, v_count) = DXTOKEN.viewStats(msg.sender);
-        if(del_count == 0){DXTOKEN.registerVoter(name);}
+        require(OPTION == POS || OPTION == NEG);
+        (user, dtabase, p_count, n_count, del_count, v_count) = DXTOKEN.viewStats(msg.sender);
+        if(name == 0){DXTOKEN.registerVoter(name);}
 
         for(uint y = 0 ; y < dtabase.length ; y++)
         {
 
             bytes32 prev = dtabase[y];
-            if(keccak256(prev) == keccak256(project)){revert();}
+            if(prev == project){revert();}
 
         }
 
         Proposal storage output = delegate[project];
-        require(output.result == NA);
         uint256 voting_weight = delegationCount(msg.sender);
         output.voted.push(msg.sender);
         output.weight.push(voting_weight);
         output.optn.push(OPTION);
-        if(OPTION == POS){output.negative += voting_weight;}
-        else if(OPTION == NEG){output.positive += voting_weight;}
+        require(output.result == 0);
+        if(OPTION == NEG){output.negative = output.negative + voting_weight;}
+        else if(OPTION == POS){output.positive = output.positive + voting_weight;}
         Proposal memory input = Proposal({
             tickr: output.tickr,
             ctype: output.ctype,
@@ -111,7 +115,7 @@ contract DelegationDX
             voted: output.voted,
             weight: output.weight,
             optn: output.optn,
-            result: NA});
+            result: 0});
         delegate[project] = input;
         DXTOKEN.delegationEvent(msg.sender, voting_weight, OPTION, project);
 
@@ -132,7 +136,7 @@ contract DelegationDX
         uint256 livebalance;
         uint256 votebalance;
         address voter;
-        bytes1 option;
+        bytes32 option;
         Proposal storage output = delegate[project];
 
         for(uint x = 0 ; x < output.voted.length ; x++)
@@ -147,8 +151,8 @@ contract DelegationDX
             if(votebalance > livebalance)
             {
 
-                if(option == POS){output.positive -= votebalance; output.positive += livebalance;}
-                else if(option == NEG){output.negative -= votebalance; output.negative += livebalance;}
+                if(option == POS){output.positive = output.positive - votebalance; output.positive = output.positive + livebalance;}
+                else if(option == NEG){output.negative = output.negative - votebalance; output.negative = output.negative + livebalance;}
 
             }
 
