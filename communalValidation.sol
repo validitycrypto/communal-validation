@@ -1,8 +1,8 @@
-pragma solidity ^0.4.20;
+pragma solidity ^0.4.24;
 
-import "./ERCDX.sol";
+import "./ERC20d.sol";
 
-contract DelegationDX
+contract communalValidation
 {
 
     bytes32 constant public POS = 0x506f736974697665000000000000000000000000000000000000000000000000;
