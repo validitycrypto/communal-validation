@@ -7,7 +7,7 @@ import "./ERC20d.sol";
 contract communalValidation
 {
 
-  using addressSet.Set for address;
+  using addressSet for address.Set;
   using SafeMath for uint;
 
   bytes32 constant POS = 0x506f736974697665000000000000000000000000000000000000000000000000;
@@ -25,7 +25,7 @@ contract communalValidation
       bytes32 _postive;
       bytes32 _negative;
       bytes32 _neutral;
-      bytes32 _events;
+      bytes32 _rounds;
       bytes32 _result;
 
   }
@@ -37,6 +37,13 @@ contract communalValidation
   ERC20d private _VLDY;
   bytes32 public _live;
   uint public _round;
+
+  modifier _delegateCheck(address _account) {
+    require(!_event[_round][_live]._delegates.contains(_account)
+            && _VLDY.isStaking(_account)
+            && _VLDY.isActive(_account));
+    _;
+  }
 
   modifier _onlyAdmin() {
       require(msg.sender == _admin);
@@ -51,73 +58,74 @@ contract communalValidation
       subject = _live;
    }
 
+  function currentRound() public view returns (uint round) {
+      round = _round;
+  }
+
+  function isVoted(address _voter) public view returns (bool) {
+      return _event[_round][_live]._delegates.contains(_voter);
+  }
+
+  function eventSubject(bytes32 _entity, uint _index) public view returns (bytes32 subject) {
+      subject = _event[_index][_entity]._subject;
+  }
+
+  function eventType(bytes32 _entity, uint _index) public view returns (bytes32 class) {
+      class = _event[_index][_entity]._type;
+  }
+
+  function eventPositive(bytes32 _entity, uint _index) public view returns (uint positive) {
+      positive = uint(_event[_index][_entity]._positive);
+  }
+
+  function eventNegative(bytes32 _entity, uint _index) public view returns (uint negative) {
+      negative = uint(_event[_index][_entity]._negative);
+  }
+
+  function eventNeutral(bytes32 _entity, uint _index) public view returns (uint neutral) {
+      neutral = uint(_event[_index][_entity]._neutral);
+  }
+
   function createEvent(bytes32 _entity, bytes32 _tick, bytes32 _asset, uint _index) public _onlyAdmin
   {
-      _event[_round][_entity]._subject = _entity;
-      _event[_round][_entity]._ticker = _tick;
-      _event[_round][_entity]._type = _asset;
+      _event[_index][_entity]._subject = _entity;
+      _event[_index][_entity]._ticker = _tick;
+      _event[_index][_entity]._type = _asset;
       _active[_entity] = true;
       _live = _entity;
       _round = _index;
   }
 
-    function voteSubmit(bytes32 _choice) public
-    {
-      require(!_event[_round][_live]._delegates.contains(msg.sender));
+  function voteSubmit(bytes32 _choice) _delegateCheck(msg.sender) public {
+      _event[_round][_live]._delegates.insert(msg.sender);
+      bytes storage id = _VLDY.getvID(msg.sender);
+      uint weight = votingWeight(msg.sender);
 
-    }
+      if(_choice == POS) {
+        _event[_round][_live]._postive = bytes32(eventPositive().add(weight));
+      } else if(_choice == NEU) {
+        _event[_round][_live]._neutral = bytes32(eventNeutral().add(weight));
+      } else if(_choice == NEG) {
+        _event[_round][_live]._negative = bytes32(eventNegative().add(weight));
+      }
 
-    function delegationCount(address target) internal constant returns (uint256)
-    {
+      _VLDY.delegationEvent(id, _choice, weight);
+  }
 
-        uint256 wager = DXTOKEN.balanceOf(target);
-        require(wager >= VOTE);
-        uint256 reward = wager/VOTE;
-        return reward;
+  function votingWeight(address _target) public view returns (uint stake) {
+      uint wager = _VLDY.balanceOf(_target);
+      require(wager >= VOTE);
+      stake = wager/VOTE;
+  }
 
-    }
-
-    function voteCount(bytes32 project) public only_admin
-    {
-        uint256 livebalance;
-        uint256 votebalance;
-        address voter;
-        bytes32 option;
-        Proposal storage output = delegate[project];
-
-        for(uint x = 0 ; x < output.voted.length ; x++)
-        {
-
-            voter = output.voted[x];
-            votebalance = output.weight[x];
-            option = output.optn[x];
-            livebalance = DXTOKEN.balanceOf(voter);
-            livebalance = livebalance/VOTE;
-
-            if(votebalance > livebalance)
-            {
-
-                if(option == POS){output.positive = output.positive - votebalance; output.positive = output.positive + livebalance;}
-                else if(option == NEG){output.negative = output.negative - votebalance; output.negative = output.negative + livebalance;}
-
-            }
-
-
-        }
-
-
-        if(output.negative > output.positive){output.result = output.negative;}
-        else if(output.positive > output.negative){output.result = output.positive;}
-        memStore(output.name, output.sym, output.ctype, output.negative, output.positive, output.voted, output.weight, output.optn, output.result);
-
-    }
-
-    function delegationReward(address target) public
-    {
-
-        uint256 weight = delegationCount(target);
-        DXTOKEN.transferFrom(this, target, weight);
-
-    }
+  function distributeRewards() _onlyAdmin public {
+      uint totalDelegates = _event[_round][_live]._delegates.length;
+      for(uint v = 0; v < totalDelegates ; v++) {
+        address voter = _event[_round][_live]._delegates.members[v];
+        bytes storage id = _VLDY.getvID(voter);
+        uint reward = votingWeight(voter);
+        _VLDY.delegationReward(id, voter, reward);
+      }
+  }
 
 }
