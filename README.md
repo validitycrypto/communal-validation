@@ -1,6 +1,6 @@
-# Ðivision X Delegation Contract
+### Validity Communal Validation Smart Contract
 
-Community members can pull their token holdings in order to:
+This is the essence of what makes Validity, please be advised this is at a very early stage.
 
 A) receive a reward based on their voting weight.
 
