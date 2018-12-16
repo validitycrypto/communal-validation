@@ -4,17 +4,16 @@ import "./addressSet.sol";
 import "./SafeMath.sol";
 import "./ERC20d.sol";
 
-contract communalValidation
-{
+contract communalValidation {
 
-  using addressSet for address.Set;
+  using addressSet for addressSet.Set;
   using SafeMath for uint;
 
   bytes32 constant POS = 0x506f736974697665000000000000000000000000000000000000000000000000;
   bytes32 constant NEU = 0x6e65757472616c00000000000000000000000000000000000000000000000000;
   bytes32 constant NEG = 0x4e65676174697665000000000000000000000000000000000000000000000000;
 
-  uint constant VOTE = uint(1000).mul(10**uint(18));
+  uint constant VOTE = 1000000000000000000000;
 
   struct _validation {
 
@@ -22,7 +21,7 @@ contract communalValidation
       bytes32 _subject;
       bytes32 _ticker;
       bytes32 _type;
-      bytes32 _postive;
+      bytes32 _positive;
       bytes32 _negative;
       bytes32 _neutral;
       bytes32 _rounds;
@@ -39,7 +38,7 @@ contract communalValidation
   uint public _round;
 
   modifier _delegateCheck(address _account) {
-    require(!_event[_round][_live]._delegates.contains(_account)
+    require(!_event[_live][_round]._delegates.contains(_account)
             && _VLDY.isStaking(_account)
             && _VLDY.isActive(_account));
     _;
@@ -63,50 +62,50 @@ contract communalValidation
   }
 
   function isVoted(address _voter) public view returns (bool) {
-      return _event[_round][_live]._delegates.contains(_voter);
+      return _event[_live][_round]._delegates.contains(_voter);
   }
 
   function eventSubject(bytes32 _entity, uint _index) public view returns (bytes32 subject) {
-      subject = _event[_index][_entity]._subject;
+      subject = _event[_entity][_index]._subject;
   }
 
   function eventType(bytes32 _entity, uint _index) public view returns (bytes32 class) {
-      class = _event[_index][_entity]._type;
+      class = _event[_entity][_index]._type;
   }
 
   function eventPositive(bytes32 _entity, uint _index) public view returns (uint positive) {
-      positive = uint(_event[_index][_entity]._positive);
+      positive = uint(_event[_entity][_index]._positive);
   }
 
   function eventNegative(bytes32 _entity, uint _index) public view returns (uint negative) {
-      negative = uint(_event[_index][_entity]._negative);
+      negative = uint(_event[_entity][_index]._negative);
   }
 
   function eventNeutral(bytes32 _entity, uint _index) public view returns (uint neutral) {
-      neutral = uint(_event[_index][_entity]._neutral);
+      neutral = uint(_event[_entity][_index]._neutral);
   }
 
   function createEvent(bytes32 _entity, bytes32 _tick, bytes32 _asset, uint _index) public _onlyAdmin
   {
-      _event[_index][_entity]._subject = _entity;
-      _event[_index][_entity]._ticker = _tick;
-      _event[_index][_entity]._type = _asset;
+      _event[_entity][_index]._subject = _entity;
+      _event[_entity][_index]._ticker = _tick;
+      _event[_entity][_index]._type = _asset;
       _active[_entity] = true;
       _live = _entity;
       _round = _index;
   }
 
   function voteSubmit(bytes32 _choice) _delegateCheck(msg.sender) public {
-      _event[_round][_live]._delegates.insert(msg.sender);
-      bytes storage id = _VLDY.getvID(msg.sender);
+      _event[_live][_round]._delegates.insert(msg.sender);
+      bytes memory id = _VLDY.getvID(msg.sender);
       uint weight = votingWeight(msg.sender);
 
       if(_choice == POS) {
-        _event[_round][_live]._postive = bytes32(eventPositive().add(weight));
+        _event[_live][_round]._positive = bytes32(eventPositive(_live, _round).add(weight));
       } else if(_choice == NEU) {
-        _event[_round][_live]._neutral = bytes32(eventNeutral().add(weight));
+        _event[_live][_round]._neutral = bytes32(eventNeutral(_live, _round).add(weight));
       } else if(_choice == NEG) {
-        _event[_round][_live]._negative = bytes32(eventNegative().add(weight));
+        _event[_live][_round]._negative = bytes32(eventNegative(_live, _round).add(weight));
       }
 
       _VLDY.delegationEvent(id, _choice, weight);
@@ -119,10 +118,10 @@ contract communalValidation
   }
 
   function distributeRewards() _onlyAdmin public {
-      uint totalDelegates = _event[_round][_live]._delegates.length;
+      uint totalDelegates = _event[_live][_round]._delegates.length();
       for(uint v = 0; v < totalDelegates ; v++) {
-        address voter = _event[_round][_live]._delegates.members[v];
-        bytes storage id = _VLDY.getvID(voter);
+        address voter = _event[_live][_round]._delegates.members[v];
+        bytes memory id = _VLDY.getvID(voter);
         uint reward = votingWeight(voter);
         _VLDY.delegationReward(id, voter, reward);
       }
