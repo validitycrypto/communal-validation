@@ -1,7 +1,6 @@
 pragma solidity ^0.4.24;
 
 import "./addressSet.sol";
-import "./SafeMath.sol";
 import "./ERC20d.sol";
 
 contract communalValidation {
@@ -10,15 +9,14 @@ contract communalValidation {
   using SafeMath for uint;
 
   bytes32 constant POS = 0x506f736974697665000000000000000000000000000000000000000000000000;
-  bytes32 constant NEU = 0x6e65757472616c00000000000000000000000000000000000000000000000000;
+  bytes32 constant NEU = 0x4e65757472616c00000000000000000000000000000000000000000000000000;
   bytes32 constant NEG = 0x4e65676174697665000000000000000000000000000000000000000000000000;
 
-  uint constant VOTE = 1000000000000000000000;
+  uint constant VOTE = 10000000000000000000000;
 
   struct _validation {
 
       addressSet.Set _delegates;
-      bytes32 _subject;
       bytes32 _ticker;
       bytes32 _type;
       bytes32 _positive;
@@ -65,8 +63,8 @@ contract communalValidation {
       return _event[_live][_round]._delegates.contains(_voter);
   }
 
-  function eventSubject(bytes32 _entity, uint _index) public view returns (bytes32 subject) {
-      subject = _event[_entity][_index]._subject;
+  function eventTicker(bytes32 _entity, uint _index) public view returns (bytes32 ticker) {
+      ticker = _event[_entity][_index]._ticker;
   }
 
   function eventType(bytes32 _entity, uint _index) public view returns (bytes32 class) {
@@ -87,7 +85,6 @@ contract communalValidation {
 
   function createEvent(bytes32 _entity, bytes32 _tick, bytes32 _asset, uint _index) public _onlyAdmin
   {
-      _event[_entity][_index]._subject = _entity;
       _event[_entity][_index]._ticker = _tick;
       _event[_entity][_index]._type = _asset;
       _active[_entity] = true;
@@ -98,7 +95,7 @@ contract communalValidation {
   function voteSubmit(bytes32 _choice) _delegateCheck(msg.sender) public {
       _event[_live][_round]._delegates.insert(msg.sender);
       bytes memory id = _VLDY.getvID(msg.sender);
-      uint weight = votingWeight(id, msg.sender);
+      uint weight = votingWeight(msg.sender);
 
       if(_choice == POS) {
         _event[_live][_round]._positive = bytes32(eventPositive(_live, _round).add(weight));
@@ -108,38 +105,16 @@ contract communalValidation {
         _event[_live][_round]._negative = bytes32(eventNegative(_live, _round).add(weight));
       }
 
-      _VLDY.delegationEvent(id, _choice, weight);
+      _VLDY.delegationEvent(id, _live, _choice, weight);
+      _VLDY.delegationReward(id, msg.sender, VOTE);
+
   }
 
-  function votingWeight(bytes _id, address _voter) public view returns (uint stake) {
+  function votingWeight(address _voter) public view returns (uint stake) {
       require(_VLDY.balanceOf(_voter) >= VOTE);
 
       uint wager = _VLDY.balanceOf(_voter);
-      uint trust = _VLDY.trustLevel(_id);
-      uint weightUsage;
-
-      if(trust == 0){
-        weightUsage = 25;
-      } else if(trust > 0) {
-        weightUsage = 50;
-      } else if(trust > 5) {
-        weightUsage = 75;
-      } else if(trust > 10) {
-        weightUsage = 100;
-      }
-      wager = wager.mul(weightUsage.div(100));
       stake = wager.div(VOTE);
-  }
-
-  function distributeRewards() _onlyAdmin public {
-      uint totalDelegates = _event[_live][_round]._delegates.length();
-      for(uint v = 0; v < totalDelegates ; v++) {
-        address voter = _event[_live][_round]._delegates.members[v];
-        bytes memory id = _VLDY.getvID(voter);
-        uint reward = votingWeight(id, voter);
-        _VLDY.delegationReward(id, voter, reward);
-        _VLDY.increaseTrust(id);
-      }
   }
 
 }
