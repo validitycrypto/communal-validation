@@ -1,4 +1,4 @@
-pragma solidity ^0.4.24;
+pragma solidity ^0.5.8;
 
 import "./addressSet.sol";
 import "./ERC20d.sol";
@@ -15,30 +15,28 @@ contract communalValidation {
   uint constant VOTE = 10000000000000000000000;
 
   struct _validation {
-
-      addressSet.Set _delegates;
-      bytes32 _ticker;
-      bytes32 _type;
-      bytes32 _positive;
-      bytes32 _negative;
-      bytes32 _neutral;
-      bytes32 _rounds;
-      bytes32 _result;
-
+      addressSet.Set _delegateRef;
+      bytes32 _positiveVotes;
+      bytes32 _negativeVotes;
+      bytes32 _neutralVotes;
+      bytes32 _subjectType;
+      bytes32 _assetTicker;
+      bytes32 _eventCount;
+      bytes32 _quantScore;
   }
 
   mapping(bytes32 => mapping (uint => _validation)) private _event;
   mapping(bytes32 => bool) private _active;
 
   address public _admin  = msg.sender;
-  ERC20d private _VLDY;
+  ERC20d private VLDY;
   bytes32 public _live;
   uint public _round;
 
   modifier _delegateCheck(address _account) {
-    require(!_event[_live][_round]._delegates.contains(_account)
-            && _VLDY.isStaking(_account)
-            && _VLDY.isActive(_account));
+    require(!_event[_live][_round]._delegateRef.contains(_account)
+            && VLDY.isStaking(_account)
+            && VLDY.isActive(_account));
     _;
   }
 
@@ -48,7 +46,7 @@ contract communalValidation {
   }
 
   function initialiseAsset(address _source) _onlyAdmin public {
-      _VLDY = ERC20d(_source);
+      VLDY = ERC20d(_source);
   }
 
   function currentEvent() public view returns (bytes32 subject) {
@@ -59,62 +57,72 @@ contract communalValidation {
       round = _round;
   }
 
+  function currentParticipants() public view returns (uint round) {
+    return _event[_live][_round]._delegateRef.length();
+  }
+
   function isVoted(address _voter) public view returns (bool) {
-      return _event[_live][_round]._delegates.contains(_voter);
+      return _event[_live][_round]._delegateRef.contains(_voter);
   }
 
   function eventTicker(bytes32 _entity, uint _index) public view returns (bytes32 ticker) {
-      ticker = _event[_entity][_index]._ticker;
+      ticker = _event[_entity][_index]._assetTicker;
   }
 
   function eventType(bytes32 _entity, uint _index) public view returns (bytes32 class) {
-      class = _event[_entity][_index]._type;
+      class = _event[_entity][_index]._subjectType;
   }
 
   function eventPositive(bytes32 _entity, uint _index) public view returns (uint positive) {
-      positive = uint(_event[_entity][_index]._positive);
+      positive = uint(_event[_entity][_index]._positiveVotes);
   }
 
   function eventNegative(bytes32 _entity, uint _index) public view returns (uint negative) {
-      negative = uint(_event[_entity][_index]._negative);
+      negative = uint(_event[_entity][_index]._negativeVotes);
   }
 
   function eventNeutral(bytes32 _entity, uint _index) public view returns (uint neutral) {
-      neutral = uint(_event[_entity][_index]._neutral);
+      neutral = uint(_event[_entity][_index]._neutralVotes);
   }
 
   function createEvent(bytes32 _entity, bytes32 _tick, bytes32 _asset, uint _index) public _onlyAdmin
   {
-      _event[_entity][_index]._ticker = _tick;
-      _event[_entity][_index]._type = _asset;
+      _event[_entity][_index]._assetTicker = _tick;
+      _event[_entity][_index]._subjectType = _asset;
       _active[_entity] = true;
       _live = _entity;
       _round = _index;
   }
 
   function voteSubmit(bytes32 _choice) _delegateCheck(msg.sender) public {
-      _event[_live][_round]._delegates.insert(msg.sender);
-      bytes memory id = _VLDY.getvID(msg.sender);
+      _event[_live][_round]._delegateRef.insert(msg.sender);
+      bytes32 id = VLDY.validityId(msg.sender);
       uint weight = votingWeight(msg.sender);
 
       if(_choice == POS) {
-        _event[_live][_round]._positive = bytes32(eventPositive(_live, _round).add(weight));
+        _event[_live][_round]._positiveVotes = bytes32(eventPositive(_live, _round).add(weight));
       } else if(_choice == NEU) {
-        _event[_live][_round]._neutral = bytes32(eventNeutral(_live, _round).add(weight));
+        _event[_live][_round]._neutralVotes = bytes32(eventNeutral(_live, _round).add(weight));
       } else if(_choice == NEG) {
-        _event[_live][_round]._negative = bytes32(eventNegative(_live, _round).add(weight));
+        _event[_live][_round]._negativeVotes = bytes32(eventNegative(_live, _round).add(weight));
       }
 
-      _VLDY.delegationEvent(id, _live, _choice, weight);
-      _VLDY.delegationReward(id, msg.sender, VOTE);
-
+      VLDY.validationEvent(id, _live, _choice, weight);
   }
 
   function votingWeight(address _voter) public view returns (uint stake) {
-      require(_VLDY.balanceOf(_voter) >= VOTE);
+      require(VLDY.balanceOf(_voter) >= VOTE);
 
-      uint wager = _VLDY.balanceOf(_voter);
+      uint wager = VLDY.balanceOf(_voter);
       stake = wager.div(VOTE);
   }
 
+  function concludeValidation() _onlyAdmin public {
+      for(uint x = 0; x < currentParticipants(); x++){
+        address delegate = _event[_live][_round]._delegateRef.members[x];
+        VLDY.validationReward(VLDY.validityId(delegate), delegate, VOTE);
+      }
+  }
+
 }
+
