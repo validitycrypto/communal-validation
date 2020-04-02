@@ -7,11 +7,10 @@ contract DAO {
   using SafeMath for uint;
 
   bytes32 constant POS = 0x506f736974697665000000000000000000000000000000000000000000000000;
-  bytes32 constant NEU = 0x4e65757472616c00000000000000000000000000000000000000000000000000;
+  bytes32 constant NEG = 0x4e65676174697665000000000000000000000000000000000000000000000000;
 
   struct Approval {
     mapping (address => bytes32) accreditors;
-    address[] participants;
     uint expirationDate;
     uint negativeCount;
     uint positiveCount;
@@ -44,110 +43,118 @@ contract DAO {
     addCommitteeMember(msg.sender);
   }
 
-  modifier _isCommitteeMember(address account, bool state) {
-    if(state) require(committee[account].blockNumber != 0);
-    else require(committee[account].blockNumber == 0);
+  modifier _isVotable(string memory _subject) {
+    require(approvals[_subject].expirationDate >= block.timestamp);
+    require(approvals[_subject].accreditors[msg.sender] == 0x0);
+    require(!proposals[_subject].approvalState);
+    require(proposals[_subject].queryState);
     _;
   }
 
-  modifier _isValidProposal(string memory subject) {
-    require(proposals[subject].ipfsHash.length != 0);
-    require(proposals[subject].endorsementCount != 0);
+  modifier _isCommitteeMember(address _account, bool _state) {
+    if(_state) require(committee[_account].blockNumber != 0);
+    else require(committee[_account].blockNumber == 0);
     _;
   }
 
-  modifier _canVote(string memory subject) {
-    require(approvals[subject].accreditors[msg.sender] == bytes(0x0));
-    require(approvals[subject].expirationDate >= block.timestamp);
-    require(!proposals[subject].approvalState);
-    require(proposals[subject].queryState);
+  modifier _isValidProposal(string memory _subject) {
+    require(proposals[_subject].ipfsHash.length != 0);
     _;
   }
 
-  modifier _isVerifiedUser(address account) { _; }
+  modifier _isVerifiedUser(address _account) { _; }
 
   function getQuorum() public view returns (uint) {
     if(members.length % 2 == 0) return members.length.div(2);
     else return members.length.sub(1).div(2);
   }
 
-  function addCommitteeMember(address individual)
-    _isCommitteeMember(individual, false)
+  function addCommitteeMember(address _individual)
+    _isCommitteeMember(_individual, false)
   private {
-    committee[individual].blockNumber = block.number;
-    members.push(individual);
+    committee[_individual].blockNumber = block.number;
+    members.push(_individual);
   }
 
-  function proposeApproval(string memory subject)
-    _isCommitteeMember(msg.sender, true)
+  function proposeApproval(string memory _subject)
+    _isCommitteeMember(msg.sender, true) _isValidProposal(_subject)
   public {
-    require(!proposals[subject].approvalState);
-    require(!proposals[subject].queryState);
+    require(!proposals[_subject].approvalState);
+    require(!proposals[_subject].queryState);
 
     uint expiryTimestamp = block.timestamp + 604800;
 
-    approvals[subject].expirationDate = expiryTimestamp;
-    approvals[subject].proposee = msg.sender;
-    proposals[subject].queryState = true;
+    approvals[_subject].expirationDate = expiryTimestamp;
+    approvals[_subject].proposee = msg.sender;
+    proposals[_subject].queryState = true;
   }
 
   function voteApproval(string memory _subject, bytes32 _choice)
-    _isCommitteeMember(msg.sender, true) _canVote(subject)
+    _isCommitteeMember(msg.sender, true) _isVotable(_subject)
   public {
-    require(_choice == NEG || _choice == POS);
+    if(_choice == POS) approvals[_subject].positiveCount++;
+    else if(_choice == NEG) approvals[_subject].negativeCount++;
+    else revert();
 
-    approvals[subject].accreditors[msg.sender] = _choice;
-    approvals[subject].participants.push(msg.sender);
+    approvals[_subject].accreditors[msg.sender] = _choice;
   }
 
   function concludeApproval(string memory _subject)
-    _isCommitteeMember(msg.sender)
+    _isCommitteeMember(msg.sender, true) _isValidProposal(_subject)
   public {
-    require(approvals[subject].expirationDate < block.timestamp);
+    require(approvals[_subject].expirationDate < block.timestamp);
 
-    for(var x = 0 ; x < approvals[subject].participants ; x++) {
-      var focusPoint = approvals[subject].participants[x];
-      var decision = approvals[subject].accreditors[focusPoint];
+    uint confirmations = approvals[_subject].positiveCount;
+    uint rejections = approvals[_subject].negativeCount;
 
-      if(decision == POS) approvals[subject].positiveCount++;
-      else if(decision == NEG) approvals[subject].negativeCount++;
-    }
+    if(confirmations >= rejections) executeProposal(_subject);
 
-    var confirmations = approvals[subject].positiveCount;
-    var rejections = approvals[subject].negativeCount;
-
-    if(approvals => rejections) executeProposal(subject)
-
-    emit Approval(subject, confirmations, rejections);
-    delete approvals[subject];
+    emit Assessment(_subject, confirmations, rejections);
+    delete approvals[_subject];
   }
 
-  function executeProposal(string memory subject) { }
+  function executeProposal(string memory _subject) private {
+    proposals[_subject].approvalState = true;
+    proposals[_subject].queryState = false;
+  }
 
-  function createProposal(string memory subject, bytes memory ipfsHash)
+  function createProposal(string memory _subject, bytes memory _ipfsHash)
   public payable {
-    require(ipfsHash.length != 0 && bytes(subject).length != 0);
-    require(proposals[subject].ipfsHash.length == 0);
+    require(_ipfsHash.length != 0 && bytes(_subject).length != 0);
+    require(proposals[_subject].ipfsHash.length == 0);
 
-    proposals[subject].bidAmount = msg.value;
-    proposals[subject].ipfsHash = ipfsHash;
+    proposals[_subject].bidAmount = msg.value;
+    proposals[_subject].ipfsHash = _ipfsHash;
+
+    emit Proposition(_subject, msg.sender, msg.value);
   }
 
-  function fundProposal(string memory subject)
-    _isValidProposal(subject)
+  function fundProposal(string memory _subject)
+    _isValidProposal(_subject)
   public payable {
-    uint existingBid = proposals[subject].bidAmount;
+    uint existingBid = proposals[_subject].bidAmount;
 
-    proposals[subject].bidAmount = existingBid.add(msg.value);
+    proposals[_subject].bidAmount = existingBid.add(msg.value);
+
+    emit Endowment(_subject, msg.sender, msg.value);
   }
 
-  function endorseProposal(string memory subject)
-    _isValidProposal(subject) _isVerifiedUser(msg.sender)
+  function endorseProposal(string memory _subject)
+    _isValidProposal(_subject) _isVerifiedUser(msg.sender)
   public {
-    require(!proposals[subject].endorsers[msg.sender]);
+    require(!proposals[_subject].endorsers[msg.sender]);
 
-    proposals[subject].endorsers[msg.sender] = true;
-    proposals[subject].endorsementCount++;
+    proposals[_subject].endorsers[msg.sender] = true;
+    proposals[_subject].endorsements++;
+
+    emit Endorsement(_subject, msg.sender);
   }
 
+  event Proposition(string subject, address indexed proposee, uint bid);
+
+  event Endowment(string subject, address indexed endowee, uint bid);
+
+  event Assessment(string subject, uint approvals, uint rejections);
+
+  event Endorsement(string subject, address indexed endorsee);
 }
