@@ -1,6 +1,19 @@
 pragma solidity ^0.6.4;
 
+import "@openzeppelin/contracts/math/SafeMath.sol";
+
 contract DAO {
+
+  using SafeMath for uint;
+
+  struct Proposal {
+    mapping (address => bool) endorsers;
+    uint endorsementCount;
+    bool approvalState;
+    bool queryState;
+    bytes ipfsHash;
+    uint bidAmount;
+  }
 
   struct Member {
     uint blockNumber;
@@ -9,67 +22,66 @@ contract DAO {
     uint qualityRep;
   }
 
-  struct Proposal {
-    mapping (address => bool) endorsers;
-    unit endorsementCount;
-    bool approvalState;
-    bytes32 ipfsHash;
-    uint bidAmount;
-  }
-
-  mapping (address => Proposal) public proposals;
+  mapping (string => Proposal) public proposals;
   mapping (address => Member) public committee;
 
   address[] public members;
 
-  constructor() addCommitteeMember(msg.sender) public { }
+  constructor() public {
+    addCommitteeMember(msg.sender);
+  }
 
-  modifier _isCommitteeMember(address acc, bool state) {
-    if(state) require(committee[acc].blockNumber != 0)
-    else require(committee[acc].blockNumber == 0)
+  modifier _isCommitteeMember(address account, bool state) {
+    if(state) require(committee[account].blockNumber != 0);
+    else require(committee[account].blockNumber == 0);
     _;
   }
 
-  modifier _isValidProposal(string subject) {
-    require(proposal[subject].ipfsHash != bytes32(0x0));
-    require(proposal[subject].endorsementCount != 0);
+  modifier _isValidProposal(string memory subject) {
+    require(proposals[subject].ipfsHash.length != 0);
+    require(proposals[subject].endorsementCount != 0);
     _;
   }
 
-  modifier _isVerifiedUser(address subject) { }
+  modifier _isVerifiedUser(address account) { _; }
 
   function addCommitteeMember(address individual)
     _isCommitteeMember(individual, false)
   private {
-    committee[individual].blockNumber = block.number
-    members.push(individual)
+    committee[individual].blockNumber = block.number;
+    members.push(individual);
   }
 
-  function createProposal(string subject, bytes32 ipfsHash)
+  function proposeApproval(string memory subject)
+    _isCommitteeMember(msg.sender, true)
+  public {
+    require(!proposals[subject].approvalState);
+    require(!proposals[subject].queryState);
+  }
+
+  function createProposal(string memory subject, bytes memory ipfsHash)
   public payable {
-    require(ipfsHash != bytes(0x0) && subject.length != 0)
-    require(proposal[subject].ipfsHash == bytes32(0x0))
+    require(ipfsHash.length != 0 && bytes(subject).length != 0);
+    require(proposals[subject].ipfsHash.length == 0);
 
-    proposal[subject].bidAmount = msg.value;
-    proposal[subject].ipfsHash = ipfsHash;
+    proposals[subject].bidAmount = msg.value;
+    proposals[subject].ipfsHash = ipfsHash;
   }
 
-  function fundProposal(string subject)
+  function fundProposal(string memory subject)
     _isValidProposal(subject)
   public payable {
-    require(msg.value > 1 wei);
-
-    uint existingBid = proposal[subject].bidAmount;
-    proposal[subject].bidAmount = existingBid.add(msg.value);
+    uint existingBid = proposals[subject].bidAmount;
+    proposals[subject].bidAmount = existingBid.add(msg.value);
   }
 
-  function endorseProposal(string subject)
+  function endorseProposal(string memory subject)
     _isValidProposal(subject) _isVerifiedUser(msg.sender)
   public {
-    require(!proposal[subject].endorsers[msg.sender])
-    
-    proposal[subject].endorsers[msg.sender] = true;
-    proposal[subject].endorsementCount++;
+    require(!proposals[subject].endorsers[msg.sender]);
+
+    proposals[subject].endorsers[msg.sender] = true;
+    proposals[subject].endorsementCount++;
   }
 
 }

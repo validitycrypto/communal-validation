@@ -1,0 +1,25 @@
+{
+  "name": "communal-validation",
+  "version": "1.0.0",
+  "description": "This is the essence of what makes Validity, please be advised this is at a very early stage.",
+  "main": "truffle-config.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/validitycrypto/communal-validation.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/validitycrypto/communal-validation/issues"
+  },
+  "homepage": "https://github.com/validitycrypto/communal-validation#readme",
+  "dependencies": {
+    "@openzeppelin/contracts": "^3.0.0-rc.0"
+  }
+}
