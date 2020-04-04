@@ -9,17 +9,24 @@ contract DAO {
   bytes32 constant POS = 0x506f736974697665000000000000000000000000000000000000000000000000;
   bytes32 constant NEG = 0x4e65676174697665000000000000000000000000000000000000000000000000;
 
-  struct Approval {
-    mapping (address => bytes32) accreditors;
+  enum topic { committee, proposal, action }
+
+  struct Ballot {
+    mapping (address => bytes32) verdict;
     uint expirationDate;
-    uint negativeCount;
-    uint positiveCount;
     address proposee;
+    address subject;
+    bytes ipfsHash;
+    bytes metadata;
+    uint negative;
+    uint positive;
+    bool state;
+    topic type;
   }
 
   struct Proposal {
     mapping (address => bool) endorsers;
-    bool approvalState;
+    bool ballotstate;
     uint endorsements;
     bool queryState;
     bytes ipfsHash;
@@ -34,8 +41,8 @@ contract DAO {
   }
 
   mapping (string => Proposal) public proposals;
-  mapping (string => Approval) public approvals;
   mapping (address => Member) public committee;
+  mapping (bytes => Ballot) public _ballots;
 
   address[] public members;
 
@@ -44,9 +51,9 @@ contract DAO {
   }
 
   modifier _isVotable(string memory _subject) {
-    require(approvals[_subject].expirationDate >= block.timestamp);
-    require(approvals[_subject].accreditors[msg.sender] == 0x0);
-    require(!proposals[_subject].approvalState);
+    require(ballots[_subject].expirationDate >= block.timestamp);
+    require(ballots[_subject].accreditors[msg.sender] == 0x0);
+    require(!proposals[_subject].ballotstate);
     require(proposals[_subject].queryState);
     _;
   }
@@ -54,6 +61,11 @@ contract DAO {
   modifier _isCommitteeMember(address _account, bool _state) {
     if(_state) require(committee[_account].blockNumber != 0);
     else require(committee[_account].blockNumber == 0);
+    _;
+  }
+
+  modifier _isActiveBallot(bytes _topic) {
+    require(ballots[_topic].expirationDate != 0);
     _;
   }
 
@@ -76,45 +88,79 @@ contract DAO {
     members.push(_individual);
   }
 
-  function proposeApproval(string memory _subject)
-    _isCommitteeMember(msg.sender, true) _isValidProposal(_subject)
+  function proposalBallot(string _subject, bytes _ipfsHash)
+    _isCommitteeMember(msg.sender, true)
+    _isActiveBallot(bytes(_subject))
+    _isValidProposal(_subject)
   public {
-    require(!proposals[_subject].approvalState);
+    require(!proposals[_subject].ballotstate);
     require(!proposals[_subject].queryState);
 
-    uint expiryTimestamp = block.timestamp + 604800;
+    uint expiryTimestamp = block.timestamp.add(604800);
 
-    approvals[_subject].expirationDate = expiryTimestamp;
-    approvals[_subject].proposee = msg.sender;
+    ballots[bytes(_subject)].expirationDate = expiryTimestamp;
+    ballots[bytes(_subject)].proposee = msg.sender;
+    ballots[bytes(subject)].ipfsHash = _ipfsHash;
     proposals[_subject].queryState = true;
   }
 
-  function voteApproval(string memory _subject, bytes32 _choice)
-    _isCommitteeMember(msg.sender, true) _isVotable(_subject)
+  function committeeBallot(address _individual, bytes _ipfsHash)
+    _isCommitteeMember(msg.sender, true)
+    _isActiveBallot(bytes(_individual))
   public {
-    if(_choice == POS) approvals[_subject].positiveCount++;
-    else if(_choice == NEG) approvals[_subject].negativeCount++;
-    else revert();
+    uint expiryTimestamp = block.timestamp.add(604800);
 
-    approvals[_subject].accreditors[msg.sender] = _choice;
+    ballots[bytes(_individual)].expirationDate = expiryTimestamp;
+    ballots[bytes(_individual)].proposee = msg.sender;
+    ballots[bytes(_individual)].ipfsHash = _ipfsHash;
+
+    if(committee[_individual].blockNumber == 0){
+      ballots[bytes(_individual)].state = true;
+    } else {
+      ballots[bytes(_individual)].state = false;
+    }
   }
 
-  function concludeApproval(string memory _subject)
-    _isCommitteeMember(msg.sender, true) _isValidProposal(_subject)
+  function metaBallot(bytes _metadata, bytes _ipfsHash)
+    _isCommitteeMember(msg.sender, true)
+    _isActiveBallot(_metadata)
   public {
-    require(approvals[_subject].expirationDate < block.timestamp);
+    uint expiryTimestamp = block.timestamp.add(604800);
 
-    uint confirmations = approvals[_subject].positiveCount;
-    uint rejections = approvals[_subject].negativeCount;
+    ballots[_metadata].expirationDate = expiryTimestamp;
+    ballots[_metadata].proposee = msg.sender;
+    ballots[_metadata].ipfsHash = _ipfsHash;
+  }
+
+  function voteApproval(string memory _subject, bool _choice)
+    _isCommitteeMember(msg.sender, true)
+    _isVotable(_subject)
+  public {
+    if(_choice) ballots[_subject].positiveCount++;
+    else if(!_choice) ballots[_subject].negativeCount++;
+    else revert();
+
+    ballots[_subject].accreditors[msg.sender] = _choice;
+  }
+
+  function concludeVote(string memory _subject)
+    _isCommitteeMember(msg.sender, true)
+    _isValidProposal(_subject)
+  public {
+    require(ballots[_subject].expirationDate < block.timestamp);
+
+    uint confirmations = ballots[_subject].positiveCount;
+    uint rejections = ballots[_subject].negativeCount;
 
     if(confirmations >= rejections) executeProposal(_subject);
 
     emit Assessment(_subject, confirmations, rejections);
-    delete approvals[_subject];
+    delete ballots[_subject];
   }
 
-  function executeProposal(string memory _subject) private {
-    proposals[_subject].approvalState = true;
+  function executeProposal(string memory _subject)
+  private {
+    proposals[_subject].ballotstate = true;
     proposals[_subject].queryState = false;
   }
 
@@ -140,7 +186,8 @@ contract DAO {
   }
 
   function endorseProposal(string memory _subject)
-    _isValidProposal(_subject) _isVerifiedUser(msg.sender)
+    _isVerifiedUser(msg.sender)
+    _isValidProposal(_subject)
   public {
     require(!proposals[_subject].endorsers[msg.sender]);
 
@@ -154,7 +201,7 @@ contract DAO {
 
   event Endowment(string subject, address indexed endowee, uint bid);
 
-  event Assessment(string subject, uint approvals, uint rejections);
+  event Assessment(string subject, uint ballots, uint rejections);
 
   event Endorsement(string subject, address indexed endorsee);
 }
