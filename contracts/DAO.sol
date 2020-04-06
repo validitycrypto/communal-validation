@@ -56,7 +56,7 @@ contract DAO {
       require(ballots[_subject].accreditors[msg.sender] == 0x0);
     } else {
       require(ballots[_subject].expirationDate < block.timestamp);
-    } require(ballots[_subject].proposee != address(0x0));
+    }
     _;
   }
 
@@ -68,6 +68,12 @@ contract DAO {
       require(!proposals[_subject].ballotState);
       require(!proposals[_subject].queryState);
     }
+  }
+
+  modifier _isActiveBallot(bytes _subject, bool _state){
+    if(_state) require(ballots[_subject].proposee != address(0x0));
+    else require(ballots[_subject].proposee == address(0x0));
+    _;
   }
 
   modifier _isCommitteeMember(address _account, bool _state) {
@@ -97,10 +103,11 @@ contract DAO {
   }
 
   function proposalBallot(string _subject, bytes _ipfsHash)
+    _isActiveBallot(bytes(_subject), false)
     _isCommitteeMember(msg.sender, true)
     _isVotable(bytes(_subject), false)
     _isActiveProposal(_subject, false)
-    _isValidProposal(_subject, false)
+    _isValidProposal(_subject, true)
   public {
     uint expiryTimestamp = block.timestamp.add(604800);
 
@@ -108,40 +115,47 @@ contract DAO {
     ballots[bytes(_subject)].proposee = msg.sender;
     ballots[bytes(subject)].ipfsHash = _ipfsHash;
     proposals[_subject].queryState = true;
+
+    emit Poll(bytes(_individual), msg.sender, topic.proposal);
   }
 
   function committeeBallot(address _individual, bytes _ipfsHash)
+    _isActiveBallot(bytes(_individual), false)
     _isVotable(bytes(_individual), false)
     _isCommitteeMember(msg.sender, true)
   public {
+    uint memberState = committee[_individual].blockNumber;
     uint expiryTimestamp = block.timestamp.add(604800);
+
+    if(memberState == 0) ballots[bytes(_individual)].act = true;
+    else ballots[bytes(_individual)].act = false;
 
     ballots[bytes(_individual)].expirationDate = expiryTimestamp;
     ballots[bytes(_individual)].proposee = msg.sender;
     ballots[bytes(_individual)].ipfsHash = _ipfsHash;
 
-    if(committee[_individual].blockNumber == 0){
-      ballots[bytes(_individual)].act = true;
-    } else {
-      ballots[bytes(_individual)].act = false;
-    }
+    emit Poll(bytes(_individual), msg.sender, topic.committee);
   }
 
   function metaBallot(bytes _metadata, bytes _ipfsHash)
     _isCommitteeMember(msg.sender, true)
-    _isActiveBallot(_metadata)
+    _isActiveBallot(_metadata, false)
+    _isVotable(_metadata, false)
   public {
     uint expiryTimestamp = block.timestamp.add(604800);
 
     ballots[_metadata].expirationDate = expiryTimestamp;
     ballots[_metadata].proposee = msg.sender;
     ballots[_metadata].ipfsHash = _ipfsHash;
+
+    emit Poll(_metadata, msg.sender, topic.action);
   }
 
   function vote(bytes _subject, bool _choice, bool _proposal)
     _isActiveProposal(string(subject), _proposal)
     _isValidProposal(string(subject), _proposal)
     _isCommitteeMember(msg.sender, true)
+    _isActiveBallot(_subject, true)
     _isVotable(_subject, true)
   public {
     ballots[_subject].accreditors[msg.sender] = _choice;
@@ -154,10 +168,13 @@ contract DAO {
 
   function concludeVote(bytes _subject, bool _proposal)
     _isCommitteeMember(msg.sender, true)
+    _isActiveBallot(_subject, true)
     _isVotable(_subject, false)
   public {
     uint approvals = ballots[_subject].positive;
     uint rejections = ballots[_subject].negative;
+
+    require(getQuorum() <= approvals.add(rejections));
 
     if(approvals >= rejections) {
       if(_proposal) executeProposal(_subject);
@@ -165,7 +182,6 @@ contract DAO {
     }
 
     emit Outcome(_subject, approvals, rejections);
-
     delete ballots[_subject];
   }
 
@@ -178,8 +194,7 @@ contract DAO {
   }
 
   function executeBallot(bytes _subject)
-  private {
-  }
+  private { }
 
   function createProposal(string memory _subject, bytes memory _ipfsHash)
     _isActiveProposal(subject, false)
@@ -218,6 +233,8 @@ contract DAO {
   event Proposition(string subject, address indexed proposee, uint bid);
 
   event Endowment(string subject, address indexed endowee, uint bid);
+
+  event Poll(string subject, address indexed proposee, topic type);
 
   event Vote(string subject, address indexed member, bool choice);
 
