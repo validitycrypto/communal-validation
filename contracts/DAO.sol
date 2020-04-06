@@ -20,14 +20,14 @@ contract DAO {
     bytes metadata;
     uint negative;
     uint positive;
-    bool state;
     topic type;
+    bool act;
   }
 
   struct Proposal {
     mapping (address => bool) endorsers;
-    bool ballotstate;
     uint endorsements;
+    bool ballotState;
     bool queryState;
     bytes ipfsHash;
     uint bidAmount;
@@ -50,12 +50,24 @@ contract DAO {
     addCommitteeMember(msg.sender);
   }
 
-  modifier _isVotable(string memory _subject) {
-    require(ballots[_subject].expirationDate >= block.timestamp);
-    require(ballots[_subject].accreditors[msg.sender] == 0x0);
-    require(!proposals[_subject].ballotstate);
-    require(proposals[_subject].queryState);
+  modifier _isVotable(bytes _subject, bool _state) {
+    if(_state) {
+      require(ballots[_subject].expirationDate >= block.timestamp);
+      require(ballots[_subject].accreditors[msg.sender] == 0x0);
+    } else {
+      require(ballots[_subject].expirationDate < block.timestamp);
+    } require(ballots[_subject].proposee != address(0x0));
     _;
+  }
+
+  modifier _isActiveProposal(string memory _subject, bool _state) {
+    if(_state) {
+      require(proposals[_subject].ballotState);
+      require(!proposals[_subject].queryState);
+    } else {
+      require(!proposals[_subject].ballotState);
+      require(!proposals[_subject].queryState);
+    }
   }
 
   modifier _isCommitteeMember(address _account, bool _state) {
@@ -64,13 +76,9 @@ contract DAO {
     _;
   }
 
-  modifier _isActiveBallot(bytes _topic) {
-    require(ballots[_topic].expirationDate != 0);
-    _;
-  }
-
-  modifier _isValidProposal(string memory _subject) {
-    require(proposals[_subject].ipfsHash.length != 0);
+  modifier _isValidProposal(string memory _subject, bool _state) {
+    if(_state) require(proposals[_subject].ipfsHash.length != 0);
+    else require(proposals[_subject].ipfsHash.length == 0)
     _;
   }
 
@@ -90,12 +98,10 @@ contract DAO {
 
   function proposalBallot(string _subject, bytes _ipfsHash)
     _isCommitteeMember(msg.sender, true)
-    _isActiveBallot(bytes(_subject))
-    _isValidProposal(_subject)
+    _isVotable(bytes(_subject), false)
+    _isActiveProposal(_subject, false)
+    _isValidProposal(_subject, false)
   public {
-    require(!proposals[_subject].ballotstate);
-    require(!proposals[_subject].queryState);
-
     uint expiryTimestamp = block.timestamp.add(604800);
 
     ballots[bytes(_subject)].expirationDate = expiryTimestamp;
@@ -105,8 +111,8 @@ contract DAO {
   }
 
   function committeeBallot(address _individual, bytes _ipfsHash)
+    _isVotable(bytes(_individual), false)
     _isCommitteeMember(msg.sender, true)
-    _isActiveBallot(bytes(_individual))
   public {
     uint expiryTimestamp = block.timestamp.add(604800);
 
@@ -115,9 +121,9 @@ contract DAO {
     ballots[bytes(_individual)].ipfsHash = _ipfsHash;
 
     if(committee[_individual].blockNumber == 0){
-      ballots[bytes(_individual)].state = true;
+      ballots[bytes(_individual)].act = true;
     } else {
-      ballots[bytes(_individual)].state = false;
+      ballots[bytes(_individual)].act = false;
     }
   }
 
@@ -132,42 +138,54 @@ contract DAO {
     ballots[_metadata].ipfsHash = _ipfsHash;
   }
 
-  function voteApproval(string memory _subject, bool _choice)
+  function vote(bytes _subject, bool _choice, bool _proposal)
+    _isActiveProposal(string(subject), _proposal)
+    _isValidProposal(string(subject), _proposal)
     _isCommitteeMember(msg.sender, true)
-    _isVotable(_subject)
+    _isVotable(_subject, true)
   public {
-    if(_choice) ballots[_subject].positiveCount++;
-    else if(!_choice) ballots[_subject].negativeCount++;
-    else revert();
-
     ballots[_subject].accreditors[msg.sender] = _choice;
-  }
 
-  function concludeVote(string memory _subject)
+    if(_choice) ballots[_subject].positive++;
+    else ballots[_subject].negative++;
+
+    emit Vote(_subject, msg.sender, _choice);
+ }
+
+  function concludeVote(bytes _subject, bool _proposal)
     _isCommitteeMember(msg.sender, true)
-    _isValidProposal(_subject)
+    _isVotable(_subject, false)
   public {
-    require(ballots[_subject].expirationDate < block.timestamp);
+    uint approvals = ballots[_subject].positive;
+    uint rejections = ballots[_subject].negative;
 
-    uint confirmations = ballots[_subject].positiveCount;
-    uint rejections = ballots[_subject].negativeCount;
+    if(approvals >= rejections) {
+      if(_proposal) executeProposal(_subject);
+      else executeBallot(_subject);
+    }
 
-    if(confirmations >= rejections) executeProposal(_subject);
+    emit Outcome(_subject, approvals, rejections);
 
-    emit Assessment(_subject, confirmations, rejections);
     delete ballots[_subject];
   }
 
-  function executeProposal(string memory _subject)
+  function executeProposal(bytes _subject)
+    _isActiveProposal(string(subject), true)
+    _isValidProposal(string(subject), true)
   private {
-    proposals[_subject].ballotstate = true;
-    proposals[_subject].queryState = false;
+    proposals[string(_subject)].ballotstate = true;
+    proposals[string(_subject)].queryState = false;
+  }
+
+  function executeBallot(bytes _subject)
+  private {
   }
 
   function createProposal(string memory _subject, bytes memory _ipfsHash)
+    _isActiveProposal(subject, false)
+    _isValidProposal(_subject, false)
   public payable {
     require(_ipfsHash.length != 0 && bytes(_subject).length != 0);
-    require(proposals[_subject].ipfsHash.length == 0);
 
     proposals[_subject].bidAmount = msg.value;
     proposals[_subject].ipfsHash = _ipfsHash;
@@ -176,7 +194,7 @@ contract DAO {
   }
 
   function fundProposal(string memory _subject)
-    _isValidProposal(_subject)
+    _isValidProposal(_subject, true)
   public payable {
     uint existingBid = proposals[_subject].bidAmount;
 
@@ -186,8 +204,8 @@ contract DAO {
   }
 
   function endorseProposal(string memory _subject)
+    _isValidProposal(_subject, true)
     _isVerifiedUser(msg.sender)
-    _isValidProposal(_subject)
   public {
     require(!proposals[_subject].endorsers[msg.sender]);
 
@@ -201,7 +219,10 @@ contract DAO {
 
   event Endowment(string subject, address indexed endowee, uint bid);
 
-  event Assessment(string subject, uint ballots, uint rejections);
+  event Vote(string subject, address indexed member, bool choice);
+
+  event Outcome(string subject, uint approvals, uint rejections);
 
   event Endorsement(string subject, address indexed endorsee);
+
 }
