@@ -15,12 +15,11 @@ contract DAO {
     mapping (address => bytes32) verdict;
     uint expirationDate;
     address proposee;
-    address subject;
+    address target;
     bytes ipfsHash;
-    bytes metadata;
     uint negative;
     uint positive;
-    topic type;
+    topic variety;
     bool act;
   }
 
@@ -42,22 +41,21 @@ contract DAO {
 
   mapping (string => Proposal) public proposals;
   mapping (address => Member) public committee;
-  mapping (bytes => Ballot) public _ballots;
+  mapping (bytes => Ballot) public ballots;
 
-  address[] public members;
+  address[] public committeeMembers;
 
   constructor() public {
     addCommitteeMember(msg.sender);
   }
 
-  modifier _isVotable(bytes _subject, bool _state) {
+  modifier _isVotable(bytes memory _subject, bool _state) {
     if(_state) {
       require(ballots[_subject].expirationDate >= block.timestamp);
-      require(ballots[_subject].accreditors[msg.sender] == 0x0);
+      require(ballots[_subject].verdict[msg.sender] == 0x0);
     } else {
       require(ballots[_subject].expirationDate < block.timestamp);
-    }
-    _;
+    } _;
   }
 
   modifier _isActiveProposal(string memory _subject, bool _state) {
@@ -67,10 +65,10 @@ contract DAO {
     } else {
       require(!proposals[_subject].ballotState);
       require(!proposals[_subject].queryState);
-    }
+    } _;
   }
 
-  modifier _isActiveBallot(bytes _subject, bool _state){
+  modifier _isActiveBallot(bytes memory _subject, bool _state){
     if(_state) require(ballots[_subject].proposee != address(0x0));
     else require(ballots[_subject].proposee == address(0x0));
     _;
@@ -84,25 +82,27 @@ contract DAO {
 
   modifier _isValidProposal(string memory _subject, bool _state) {
     if(_state) require(proposals[_subject].ipfsHash.length != 0);
-    else require(proposals[_subject].ipfsHash.length == 0)
+    else require(proposals[_subject].ipfsHash.length == 0);
     _;
   }
 
   modifier _isVerifiedUser(address _account) { _; }
 
   function getQuorum() public view returns (uint) {
-    if(members.length % 2 == 0) return members.length.div(2);
-    else return members.length.sub(1).div(2);
+    uint committeeCount = committeeMembers.length;
+
+    if(committeeCount % 2 == 0) return committeeCount.div(2);
+    else return committeeCount.sub(1).div(2);
   }
 
   function addCommitteeMember(address _individual)
     _isCommitteeMember(_individual, false)
   private {
     committee[_individual].blockNumber = block.number;
-    members.push(_individual);
+    committeeMembers.push(_individual);
   }
 
-  function proposalBallot(string _subject, bytes _ipfsHash)
+  function proposalBallot(string memory _subject, bytes memory _ipfsHash)
     _isActiveBallot(bytes(_subject), false)
     _isCommitteeMember(msg.sender, true)
     _isVotable(bytes(_subject), false)
@@ -112,32 +112,36 @@ contract DAO {
     uint expiryTimestamp = block.timestamp.add(604800);
 
     ballots[bytes(_subject)].expirationDate = expiryTimestamp;
+    ballots[bytes(_subject)].variety = topic.proposal;
     ballots[bytes(_subject)].proposee = msg.sender;
-    ballots[bytes(subject)].ipfsHash = _ipfsHash;
-    proposals[_subject].queryState = true;
+    ballots[bytes(_subject)].ipfsHash = _ipfsHash;
+    proposals[_subject].ballotState = true;
 
-    emit Poll(bytes(_individual), msg.sender, topic.proposal);
+    emit Poll(bytes(_subject), msg.sender, topic.proposal);
   }
 
-  function committeeBallot(address _individual, bytes _ipfsHash)
-    _isActiveBallot(bytes(_individual), false)
-    _isVotable(bytes(_individual), false)
+  function committeeBallot(address _individual, bytes memory _ipfsHash)
+    _isActiveBallot(abi.encodePacked(_individual), false)
+    _isVotable(abi.encodePacked(_individual), false)
     _isCommitteeMember(msg.sender, true)
   public {
+    bytes memory _delegate = abi.encodePacked(_individual);
     uint memberState = committee[_individual].blockNumber;
     uint expiryTimestamp = block.timestamp.add(604800);
 
-    if(memberState == 0) ballots[bytes(_individual)].act = true;
-    else ballots[bytes(_individual)].act = false;
+    if(memberState == 0) ballots[_delegate].act = true;
+    else ballots[_delegate].act = false;
 
-    ballots[bytes(_individual)].expirationDate = expiryTimestamp;
-    ballots[bytes(_individual)].proposee = msg.sender;
-    ballots[bytes(_individual)].ipfsHash = _ipfsHash;
+    ballots[_delegate].expirationDate = expiryTimestamp;
+    ballots[_delegate].variety = topic.committee;
+    ballots[_delegate].proposee = msg.sender;
+    ballots[_delegate].target = _individual;
+    ballots[_delegate].ipfsHash = _ipfsHash;
 
-    emit Poll(bytes(_individual), msg.sender, topic.committee);
+    emit Poll(_delegate, msg.sender, topic.committee);
   }
 
-  function metaBallot(bytes _metadata, bytes _ipfsHash)
+  function metaBallot(address _contract, bytes memory _metadata, bytes memory _ipfsHash)
     _isCommitteeMember(msg.sender, true)
     _isActiveBallot(_metadata, false)
     _isVotable(_metadata, false)
@@ -145,28 +149,31 @@ contract DAO {
     uint expiryTimestamp = block.timestamp.add(604800);
 
     ballots[_metadata].expirationDate = expiryTimestamp;
+    ballots[_metadata].variety = topic.action;
     ballots[_metadata].proposee = msg.sender;
     ballots[_metadata].ipfsHash = _ipfsHash;
+    ballots[_metadata].target = _contract;
 
     emit Poll(_metadata, msg.sender, topic.action);
   }
 
-  function vote(bytes _subject, bool _choice, bool _proposal)
-    _isActiveProposal(string(subject), _proposal)
-    _isValidProposal(string(subject), _proposal)
+  function vote(bytes memory _subject, bytes32 _choice, bool _proposal)
+    _isActiveProposal(string(_subject), _proposal)
+    _isValidProposal(string(_subject), _proposal)
     _isCommitteeMember(msg.sender, true)
     _isActiveBallot(_subject, true)
     _isVotable(_subject, true)
   public {
-    ballots[_subject].accreditors[msg.sender] = _choice;
+    ballots[_subject].verdict[msg.sender] = _choice;
 
-    if(_choice) ballots[_subject].positive++;
-    else ballots[_subject].negative++;
+    if(_choice == POS) ballots[_subject].positive++;
+    else if(_choice == NEG) ballots[_subject].negative++;
+    else revert();
 
     emit Vote(_subject, msg.sender, _choice);
  }
 
-  function concludeVote(bytes _subject, bool _proposal)
+  function concludeVote(bytes memory _subject)
     _isCommitteeMember(msg.sender, true)
     _isActiveBallot(_subject, true)
     _isVotable(_subject, false)
@@ -176,28 +183,33 @@ contract DAO {
 
     require(getQuorum() <= approvals.add(rejections));
 
-    if(approvals >= rejections) {
-      if(_proposal) executeProposal(_subject);
-      else executeBallot(_subject);
-    }
+    if(approvals >= rejections) execute(_subject);
 
     emit Outcome(_subject, approvals, rejections);
     delete ballots[_subject];
   }
 
-  function executeProposal(bytes _subject)
-    _isActiveProposal(string(subject), true)
-    _isValidProposal(string(subject), true)
-  private {
-    proposals[string(_subject)].ballotstate = true;
-    proposals[string(_subject)].queryState = false;
+  function execute(bytes memory _subject) private {
+    if(ballots[_subject].variety == topic.proposal) executeProposal(_subject);
+    else if(ballots[_subject].variety == topic.committee) executeBallot(_subject);
+    else if(ballots[_subject].variety == topic.action) executeMeta(_subject);
   }
 
-  function executeBallot(bytes _subject)
+  function executeMeta(bytes memory _subject) private { }
+
+  function executeProposal(bytes memory _subject)
+    _isActiveProposal(string(_subject), true)
+    _isValidProposal(string(_subject), true)
+  private {
+    proposals[string(_subject)].ballotState = false;
+    proposals[string(_subject)].queryState = true;
+  }
+
+  function executeBallot(bytes memory _subject)
   private { }
 
   function createProposal(string memory _subject, bytes memory _ipfsHash)
-    _isActiveProposal(subject, false)
+    _isActiveProposal(_subject, false)
     _isValidProposal(_subject, false)
   public payable {
     require(_ipfsHash.length != 0 && bytes(_subject).length != 0);
@@ -234,11 +246,11 @@ contract DAO {
 
   event Endowment(string subject, address indexed endowee, uint bid);
 
-  event Poll(string subject, address indexed proposee, topic type);
+  event Poll(bytes subject, address indexed proposee, topic variant);
 
-  event Vote(string subject, address indexed member, bool choice);
+  event Vote(bytes subject, address indexed member, bytes32 option);
 
-  event Outcome(string subject, uint approvals, uint rejections);
+  event Outcome(bytes subject, uint approvals, uint rejections);
 
   event Endorsement(string subject, address indexed endorsee);
 
