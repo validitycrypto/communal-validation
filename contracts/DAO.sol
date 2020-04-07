@@ -9,38 +9,44 @@ contract DAO {
   bytes32 constant POS = 0x506f736974697665000000000000000000000000000000000000000000000000;
   bytes32 constant NEG = 0x4e65676174697665000000000000000000000000000000000000000000000000;
 
-  enum topic { committee, proposal, action }
+  enum subject { committee, listing, action }
 
   struct Ballot {
     mapping (address => bytes32) verdict;
-    uint expirationDate;
-    address proposee;
-    address target;
-    bytes ipfsHash;
-    uint negative;
-    uint positive;
-    topic variety;
-    bool act;
+    uint32 expiryBlock;
+    uint16 negative;
+    uint16 positive;
+  }
+
+  struct Listing {
+    mapping (address => bool) endorsers;
+    uint16 endorsements;
+    uint256 bid;
+    bool ballot;
+    bool status;
   }
 
   struct Proposal {
-    mapping (address => bool) endorsers;
-    uint endorsements;
-    bool ballotState;
-    bool queryState;
-    bytes ipfsHash;
-    uint bidAmount;
+    bytes32 ipfsHash;
+    address proposee;
+    address target;
+    topic variety;
+    bool action;
   }
 
   struct Member {
-    uint blockNumber;
-    uint proposalCount;
-    uint reportCount;
-    uint qualityRep;
+    uint32 blockNumber;
+    uint32 reputation;
+    uint16 operations;
+    uint16 ballots;
   }
 
-  mapping (string => Proposal) public proposals;
   mapping (address => Member) public committee;
+
+  mapping (string => Listing) public listings;
+
+  mapping (bytes => Proposal) public proposals;
+
   mapping (bytes => Ballot) public ballots;
 
   address[] public committeeMembers;
@@ -51,26 +57,24 @@ contract DAO {
 
   modifier _isVotable(bytes memory _subject, bool _state) {
     if(_state) {
-      require(ballots[_subject].expirationDate >= block.timestamp);
+      require(ballots[_subject].expiryBlock >= block.number);
       require(ballots[_subject].verdict[msg.sender] == 0x0);
     } else {
-      require(ballots[_subject].expirationDate < block.timestamp);
+      require(ballots[_subject].expiryBlock < block.number);
     } _;
   }
 
-  modifier _isActiveProposal(string memory _subject, bool _state) {
+  modifier _isActiveListing(string memory _subject, bool _state) {
     if(_state) {
-      require(proposals[_subject].ballotState);
-      require(!proposals[_subject].queryState);
+      require(listings[_subject].ballot && !listings[_subject].status);
     } else {
-      require(!proposals[_subject].ballotState);
-      require(!proposals[_subject].queryState);
+      require(!listings[_subject].ballot && !proposals[_subject].status);
     } _;
   }
 
-  modifier _isActiveBallot(bytes memory _subject, bool _state){
-    if(_state) require(ballots[_subject].proposee != address(0x0));
-    else require(ballots[_subject].proposee == address(0x0));
+  modifier _isActiveBallot(bytes memory _subject, bool _state) {
+    if(_state) require(ballots[_subject].id.length != 0);
+    else require(ballots[_subject].id.length == 0);
     _;
   }
 
@@ -102,63 +106,58 @@ contract DAO {
     committeeMembers.push(_individual);
   }
 
-  function proposalBallot(string memory _subject, bytes memory _ipfsHash)
-    _isActiveBallot(bytes(_subject), false)
+  function checkProposal(bytes memory _proposalId)
+    _isValidProposal(_proposalId, false)
+  private returns (true) { }
+
+  function createProposal(string memory _subject, Proposal memory _proposal)
     _isCommitteeMember(msg.sender, true)
-    _isVotable(bytes(_subject), false)
-    _isActiveProposal(_subject, false)
+  public {
+    bytes memory proposalId = abi.encodePacked(_proposal);
+
+    if(_proposal.variety == topic.listing) proposalId = abi.encodePacked(_subject);
+
+    require(checkProposal(proposalId));
+
+    proposals[proposalId] = _proposal
+    proposals[proposalId].proposee = msg.sender;
+
+    createBallot(proposalId);
+  }
+
+  function createBallot(bytes memory _proposalId)
+    _isActiveBallot(_proposalId, false)
     _isValidProposal(_subject, true)
-  public {
-    uint expiryTimestamp = block.timestamp.add(604800);
+    _isVotable(_proposalId, false)
+  private {
+    topic storage ballotType = proposals[_proposalId].variety;
 
-    ballots[bytes(_subject)].expirationDate = expiryTimestamp;
-    ballots[bytes(_subject)].variety = topic.proposal;
-    ballots[bytes(_subject)].proposee = msg.sender;
-    ballots[bytes(_subject)].ipfsHash = _ipfsHash;
-    proposals[_subject].ballotState = true;
+    if(ballotType == topic.committee) checkCommittee(_proposalId);
+    else if(ballotType == topic.listing) pushListing(_proposalId);
 
-    emit Poll(bytes(_subject), msg.sender, topic.proposal);
+    ballots[_proposalId].expiryBlock = block.number.add(1000);
+
+    emit Poll(_proposalId, msg.sender, ballotType);
   }
 
-  function committeeBallot(address _individual, bytes memory _ipfsHash)
-    _isActiveBallot(abi.encodePacked(_individual), false)
-    _isVotable(abi.encodePacked(_individual), false)
-    _isCommitteeMember(msg.sender, true)
-  public {
-    bytes memory _delegate = abi.encodePacked(_individual);
-    uint memberState = committee[_individual].blockNumber;
-    uint expiryTimestamp = block.timestamp.add(604800);
-
-    if(memberState == 0) ballots[_delegate].act = true;
-    else ballots[_delegate].act = false;
-
-    ballots[_delegate].expirationDate = expiryTimestamp;
-    ballots[_delegate].variety = topic.committee;
-    ballots[_delegate].proposee = msg.sender;
-    ballots[_delegate].target = _individual;
-    ballots[_delegate].ipfsHash = _ipfsHash;
-
-    emit Poll(_delegate, msg.sender, topic.committee);
+  function pushListing(bytes memory _subject)
+    _isActiveListing(string(_subject), false)
+    _isValidListing(string(_subject), true)
+  private {
+    proposals[_subject].ballot = true;
   }
 
-  function metaBallot(address _contract, bytes memory _metadata, bytes memory _ipfsHash)
-    _isCommitteeMember(msg.sender, true)
-    _isActiveBallot(_metadata, false)
-    _isVotable(_metadata, false)
+  function checkCommittee(bytes memory _proposalId)
   public {
-    uint expiryTimestamp = block.timestamp.add(604800);
+    address _subject = proposals[_proposalId].target;
+    uint memberState = committee[_subject].blockNumber;
 
-    ballots[_metadata].expirationDate = expiryTimestamp;
-    ballots[_metadata].variety = topic.action;
-    ballots[_metadata].proposee = msg.sender;
-    ballots[_metadata].ipfsHash = _ipfsHash;
-    ballots[_metadata].target = _contract;
-
-    emit Poll(_metadata, msg.sender, topic.action);
+    if(memberState == 0) proposals[_subject].action = true;
+    else proposals[_subject].action = false;
   }
 
   function vote(bytes memory _subject, bytes32 _choice, bool _proposal)
-    _isActiveProposal(string(_subject), _proposal)
+    _isActiveListing(string(_subject), _proposal)
     _isValidProposal(string(_subject), _proposal)
     _isCommitteeMember(msg.sender, true)
     _isActiveBallot(_subject, true)
@@ -198,7 +197,7 @@ contract DAO {
   function executeMeta(bytes memory _subject) private { }
 
   function executeProposal(bytes memory _subject)
-    _isActiveProposal(string(_subject), true)
+    _isActiveListing(string(_subject), true)
     _isValidProposal(string(_subject), true)
   private {
     proposals[string(_subject)].ballotState = false;
@@ -208,8 +207,8 @@ contract DAO {
   function executeBallot(bytes memory _subject)
   private { }
 
-  function createProposal(string memory _subject, bytes memory _ipfsHash)
-    _isActiveProposal(_subject, false)
+  function createListing(string memory _subject)
+    _isActiveListing(_subject, false)
     _isValidProposal(_subject, false)
   public payable {
     require(_ipfsHash.length != 0 && bytes(_subject).length != 0);
