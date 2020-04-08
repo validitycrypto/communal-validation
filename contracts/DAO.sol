@@ -9,6 +9,7 @@ contract DAO {
   using SafeMath for uint16;
 
   bytes32 constant POS = 0x506f736974697665000000000000000000000000000000000000000000000000;
+  bytes32 constant NEU = 0x4e65757472616c00000000000000000000000000000000000000000000000000;
   bytes32 constant NEG = 0x4e65676174697665000000000000000000000000000000000000000000000000;
 
   enum topic { committee, listing, action }
@@ -30,7 +31,6 @@ contract DAO {
 
   struct Proposal {
     bytes32 ipfsHash;
-    address proposee;
     address target;
     topic variety;
     bool action;
@@ -47,7 +47,7 @@ contract DAO {
 
   mapping (string => Listing) public listings;
 
-  mapping (bytes => Proposal) public proposals;
+  mapping (bytes => bytes32) public proposals;
 
   mapping (bytes => Ballot) public ballots;
 
@@ -87,8 +87,8 @@ contract DAO {
   }
 
   modifier _isValidProposal(bytes memory _proposalId, bool _state) {
-    if(_state) require(proposals[_proposalId].ipfsHash.length != 0);
-    else require(proposals[_proposalId].ipfsHash.length == 0);
+    if(_state) require(proposals[_proposalId] == NEU);
+    else require(proposals[_proposalId] == 0x0);
     _;
   }
 
@@ -114,38 +114,42 @@ contract DAO {
     committeeMembers.push(_individual);
   }
 
-  function checkProposal(bytes memory _proposalId)
+  function submitProposal(bytes memory _proposalId, topic _type)
     _isValidProposal(_proposalId, false)
-  private returns (bool) { return true; }
+  private {
+    emit Proposition(_proposalId, msg.sender, _type);
+    proposals[_proposalId] = NEU;
+  }
 
   function createProposal(Proposal memory _proposal, string memory _listing)
     _isCommitteeMember(msg.sender, true)
   public {
-    bytes memory proposalId = abi.encode(_proposal);
+    bytes memory proposalId;
 
-    if(_proposal.variety == topic.listing) proposalId = abi.encode(_listing);
+    if(_proposal.variety == topic.committee) {
+      uint256 memberState = committee[_proposal.target].blockNumber;
 
-    require(checkProposal(proposalId));
+      if(memberState == 0) _proposal.action = true;
+      else _proposal.action = false;
 
-    proposals[proposalId] = _proposal;
-    proposals[proposalId].proposee = msg.sender;
+      proposalId = abi.encode(_proposal);
+    } else if(_proposal.variety == topic.listing) {
+      proposalId = abi.encode(_listing);
+      pushListing(proposalId);
+    }
 
-    return createBallot(proposalId);
+    submitProposal(proposalId, _proposal.variety);
+    createBallot(proposalId);
   }
 
   function createBallot(bytes memory _proposalId)
-    _isValidProposal(_proposalId, false)
+    _isValidProposal(_proposalId, true)
     _isActiveBallot(_proposalId, false)
     _isVotable(_proposalId, false)
   private {
-    topic ballotType = proposals[_proposalId].variety;
-
-    if(ballotType == topic.committee) checkCommittee(_proposalId);
-    else if(ballotType == topic.listing) pushListing(_proposalId);
-
     ballots[_proposalId].expiryBlock = block.number.add(1000);
 
-    emit Poll(_proposalId, msg.sender, ballotType);
+    emit Poll(_proposalId);
   }
 
   function pushListing(bytes memory _subject)
@@ -153,15 +157,6 @@ contract DAO {
     _isValidListing(string(_subject), true)
   private {
     listings[string(_subject)].ballot = true;
-  }
-
-  function checkCommittee(bytes memory _proposalId)
-  public {
-    address _subject = proposals[_proposalId].target;
-    uint256 memberState = committee[_subject].blockNumber;
-
-    if(memberState == 0) proposals[_proposalId].action = true;
-    else proposals[_proposalId].action = false;
   }
 
   function vote(bytes memory _proposalId, bytes32 _choice, bool _listing)
@@ -233,16 +228,18 @@ contract DAO {
     emit Endorsement(_subject, msg.sender);
   }
 
-  event Endowment(string subject, address indexed endowee, uint256 bid);
+  event Proposition(bytes proposalId, address indexed proposee, topic variant);
 
-  event Poll(bytes subject, address indexed proposee, topic variant);
+  event Outcome(bytes proposalId, uint16 approvals, uint16 rejections);
 
-  event Vote(bytes subject, address indexed member, bytes32 option);
+  event Endowment(string listing, address indexed endowee, uint256 bid);
 
-  event List(string subject, address indexed proposee, uint256 bid);
+  event Vote(bytes proposalId, address indexed member, bytes32 option);
 
-  event Outcome(bytes subject, uint16 approvals, uint16 rejections);
+  event List(string listing, address indexed proposee, uint256 bid);
 
-  event Endorsement(string subject, address indexed endorsee);
+  event Endorsement(string listing, address indexed endorsee);
+
+  event Poll(bytes proposalId);
 
 }
