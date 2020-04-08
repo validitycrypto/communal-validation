@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/math/SafeMath.sol";
 contract DAO {
 
   using SafeMath for uint256;
-  using SafeMath for uint16;
+  using SafeMath for uint256;
 
   bytes32 constant POS = 0x506f736974697665000000000000000000000000000000000000000000000000;
   bytes32 constant NEU = 0x4e65757472616c00000000000000000000000000000000000000000000000000;
@@ -16,9 +16,10 @@ contract DAO {
 
   struct Ballot {
     mapping (address => bytes32) verdict;
+    uint16 participants;
     uint256 expiryBlock;
-    uint32 negative;
-    uint32 positive;
+    uint256 negative;
+    uint256 positive;
   }
 
   struct Listing {
@@ -40,7 +41,7 @@ contract DAO {
   struct Member {
     uint256 blockNumber;
     uint256 roleIndex;
-    uint32 reputation;
+    uint256 reputation;
   }
 
   mapping (address => Member) public committee;
@@ -101,7 +102,8 @@ contract DAO {
 
   modifier _isVerifiedUser(address _account) { _; }
 
-  function getQuorum() public view returns (uint) {
+  function getQuorum()
+  public view returns (uint) {
     uint256 committeeCount = committeeMembers.length;
 
     if(committeeCount % 2 == 0) return committeeCount.div(2);
@@ -178,17 +180,14 @@ contract DAO {
     _isActiveBallot(_proposalId, true)
     _isVotable(_proposalId, true)
   public {
-    uint32 reputation = committee[msg.sender].reputation;
-    uint32 approvals = ballots[_proposalId].positive;
-    uint32 rejections = ballots[_proposalId].negative;
-
     if(_choice == POS) {
-      ballots[_proposalId].positive = approvals.add(reputation);
+      ballots[_proposalId].positive = getTotal(_proposalId, true);
     } else if(_choice == NEG) {
-      ballots[_proposalId].negative = rejections.add(reputation);
+      ballots[_proposalId].negative = getTotal(_proposalId, false);
     } else revert();
 
     ballots[_proposalId].verdict[msg.sender] = _choice;
+    ballots[_proposalId].participants++;
     committee[msg.sender].reputation++;
 
     emit Vote(_proposalId, msg.sender, _choice);
@@ -199,10 +198,10 @@ contract DAO {
     _isActiveBallot(_proposalId, true)
     _isVotable(_proposalId, false)
   public {
-    uint32 approvals = ballots[_proposalId].positive;
-    uint32 rejections = ballots[_proposalId].negative;
+    require(getQuorum() <= ballots[_proposalId].participants);
 
-    require(getQuorum() <= approvals.add(rejections));
+    uint256 approvals = ballots[_proposalId].positive;
+    uint256 rejections = ballots[_proposalId].negative;
 
     if(approvals >= rejections) execute(_proposalId);
 
@@ -264,9 +263,17 @@ contract DAO {
     listings[string(_subject)].ballot = true;
   }
 
+  function getTotal(bytes memory _proposalId, bool _option)
+  private returns (uint256) {
+    uint256 reputation = committee[msg.sender].reputation;
+
+    if(_option) return ballots[_proposalId].positive.add(reputation);
+    else return ballots[_proposalId].negative.add(reputation);
+  }
+
   event Proposition(bytes proposalId, address indexed proposee, topic variant);
 
-  event Outcome(bytes proposalId, uint16 approvals, uint16 rejections);
+  event Outcome(bytes proposalId, uint256 approvals, uint256 rejections);
 
   event Endowment(string listing, address indexed endowee, uint256 bid);
 
