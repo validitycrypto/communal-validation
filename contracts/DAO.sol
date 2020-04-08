@@ -17,8 +17,8 @@ contract DAO {
   struct Ballot {
     mapping (address => bytes32) verdict;
     uint256 expiryBlock;
-    uint16 negative;
-    uint16 positive;
+    uint32 negative;
+    uint32 positive;
   }
 
   struct Listing {
@@ -31,6 +31,7 @@ contract DAO {
 
   struct Proposal {
     bytes32 ipfsHash;
+    address proposee;
     address target;
     topic variety;
     bool action;
@@ -40,8 +41,6 @@ contract DAO {
     uint256 blockNumber;
     uint256 roleIndex;
     uint32 reputation;
-    uint16 operations;
-    uint16 ballots;
   }
 
   mapping (address => Member) public committee;
@@ -55,6 +54,7 @@ contract DAO {
   address[] public committeeMembers;
 
   constructor() public {
+    committee[msg.sender].reputation = 99; // Founders Shares
     addCommitteeMember(msg.sender);
   }
 
@@ -113,6 +113,7 @@ contract DAO {
   private {
     committee[_individual].roleIndex = committeeMembers.length;
     committee[_individual].blockNumber = block.number;
+    committee[_individual].reputation++;
     committeeMembers.push(_individual);
   }
 
@@ -127,6 +128,11 @@ contract DAO {
     committeeMembers.pop();
   }
 
+  function changeCommittee(Proposal memory _proposal) private {
+    if(!_proposal.action) removeCommitteeMember(_proposal.target);
+    else if(_proposal.action) addCommitteeMember(_proposal.target);
+  }
+
   function submitProposal(bytes memory _proposalId, topic _type)
     _isValidProposal(_proposalId, false)
   private {
@@ -137,6 +143,7 @@ contract DAO {
   function createProposal(Proposal memory _proposal, string memory _listing)
     _isCommitteeMember(msg.sender, true)
   public {
+    _proposal.proposee = msg.sender;
     bytes memory proposalId;
 
     if(_proposal.variety == topic.committee) {
@@ -164,13 +171,6 @@ contract DAO {
     emit Poll(_proposalId);
   }
 
-  function pushListing(bytes memory _subject)
-    _isActiveListing(string(_subject), false)
-    _isValidListing(string(_subject), true)
-  private {
-    listings[string(_subject)].ballot = true;
-  }
-
   function vote(bytes memory _proposalId, bytes32 _choice, bool _listing)
     _isActiveListing(string(_proposalId), _listing)
     _isCommitteeMember(msg.sender, true)
@@ -178,11 +178,18 @@ contract DAO {
     _isActiveBallot(_proposalId, true)
     _isVotable(_proposalId, true)
   public {
-    ballots[_proposalId].verdict[msg.sender] = _choice;
+    uint32 reputation = committee[msg.sender].reputation;
+    uint32 approvals = ballots[_proposalId].positive;
+    uint32 rejections = ballots[_proposalId].negative;
 
-    if(_choice == POS) ballots[_proposalId].positive++;
-    else if(_choice == NEG) ballots[_proposalId].negative++;
-    else revert();
+    if(_choice == POS) {
+      ballots[_proposalId].positive = approvals.add(reputation);
+    } else if(_choice == NEG) {
+      ballots[_proposalId].negative = rejections.add(reputation);
+    } else revert();
+
+    ballots[_proposalId].verdict[msg.sender] = _choice;
+    committee[msg.sender].reputation++;
 
     emit Vote(_proposalId, msg.sender, _choice);
  }
@@ -192,8 +199,8 @@ contract DAO {
     _isActiveBallot(_proposalId, true)
     _isVotable(_proposalId, false)
   public {
-    uint16 approvals = ballots[_proposalId].positive;
-    uint16 rejections = ballots[_proposalId].negative;
+    uint32 approvals = ballots[_proposalId].positive;
+    uint32 rejections = ballots[_proposalId].negative;
 
     require(getQuorum() <= approvals.add(rejections));
 
@@ -206,10 +213,14 @@ contract DAO {
   function execute(bytes memory _proposalId) private {
     Proposal memory proposition = abi.decode(_proposalId, (Proposal));
 
-    if(proposition.variety == topic.committee) { } 
-    else if(proposition.variety == topic.listing) { }
-    else if (proposition.variety == topic.action) { }
+    if(proposition.variety == topic.committee) changeCommittee(proposition);
+    else if(proposition.variety == topic.listing) pushListing(_proposalId);
+    else if (proposition.variety == topic.action) makeTransaction(proposition);
+
+    committee[proposition.proposee].reputation++;
   }
+
+  function makeTransaction(Proposal memory _proposal) private { }
 
   function createListing(string memory _subject)
     _isActiveListing(_subject, false)
@@ -244,6 +255,13 @@ contract DAO {
     listings[_subject].endorsements++;
 
     emit Endorsement(_subject, msg.sender);
+  }
+
+  function pushListing(bytes memory _subject)
+    _isActiveListing(string(_subject), false)
+    _isValidListing(string(_subject), true)
+  private {
+    listings[string(_subject)].ballot = true;
   }
 
   event Proposition(bytes proposalId, address indexed proposee, topic variant);
