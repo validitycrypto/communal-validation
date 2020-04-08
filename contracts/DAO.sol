@@ -38,6 +38,7 @@ contract DAO {
 
   struct Member {
     uint256 blockNumber;
+    uint256 roleIndex;
     uint32 reputation;
     uint16 operations;
     uint16 ballots;
@@ -57,20 +58,20 @@ contract DAO {
     addCommitteeMember(msg.sender);
   }
 
+  modifier _isActiveListing(string memory _subject, bool _state) {
+    if(_state) {
+      require(listings[_subject].ballot && !listings[_subject].status);
+    } else {
+      require(!listings[_subject].ballot && !listings[_subject].status);
+    } _;
+  }
+
   modifier _isVotable(bytes memory _proposalId, bool _state) {
     if(_state) {
       require(ballots[_proposalId].expiryBlock >= block.number);
       require(ballots[_proposalId].verdict[msg.sender] == 0x0);
     } else {
       require(ballots[_proposalId].expiryBlock < block.number);
-    } _;
-  }
-
-  modifier _isActiveListing(string memory _subject, bool _state) {
-    if(_state) {
-      require(listings[_subject].ballot && !listings[_subject].status);
-    } else {
-      require(!listings[_subject].ballot && !listings[_subject].status);
     } _;
   }
 
@@ -110,8 +111,20 @@ contract DAO {
   function addCommitteeMember(address _individual)
     _isCommitteeMember(_individual, false)
   private {
+    committee[_individual].roleIndex = committeeMembers.length;
     committee[_individual].blockNumber = block.number;
     committeeMembers.push(_individual);
+  }
+
+  function removeCommitteeMember(address _individual)
+    _isCommitteeMember(_individual, true)
+  private {
+    uint256 replacementIndex = committee[_individual].roleIndex;
+    uint256 lastIndex = committeeMembers.length-1;
+
+    committeeMembers[replacementIndex] = committeeMembers[lastIndex];
+    delete committee[_individual];
+    committeeMembers.pop();
   }
 
   function submitProposal(bytes memory _proposalId, topic _type)
@@ -148,7 +161,6 @@ contract DAO {
     _isVotable(_proposalId, false)
   private {
     ballots[_proposalId].expiryBlock = block.number.add(1000);
-
     emit Poll(_proposalId);
   }
 
@@ -191,7 +203,13 @@ contract DAO {
     delete ballots[_proposalId];
   }
 
-  function execute(bytes memory _proposalId) private {}
+  function execute(bytes memory _proposalId) private {
+    Proposal memory proposition = abi.decode(_proposalId, (Proposal));
+
+    if(proposition.variety == topic.committee) { } 
+    else if(proposition.variety == topic.listing) { }
+    else if (proposition.variety == topic.action) { }
+  }
 
   function createListing(string memory _subject)
     _isActiveListing(_subject, false)
