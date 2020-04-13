@@ -83,7 +83,7 @@ contract DAO {
     _;
   }
 
-  modifier _isValidProposal(bytes memory _proposalId, bool _state) {
+  modifier _isActiveProposal(bytes memory _proposalId, bool _state) {
     if(_state) require(proposals[_proposalId] == NEU);
     else require(proposals[_proposalId] == 0x0);
     _;
@@ -109,6 +109,16 @@ contract DAO {
   public returns (bool) {
     if(_state) return committee[_account].blockNumber != 0;
     else return committee[_account].blockNumber == 0;
+  }
+
+  function getTargetAddress(bytes _proposalId)
+  public view returns (address) {
+    return proposals[_proposalId].target;
+  }
+
+  function getProposalState(bytes _proposalId)
+  public view returns (bytes32) {
+    return proposals[_proposalId];
   }
 
   function addCommitteeMember(address _individual)
@@ -139,7 +149,7 @@ contract DAO {
   }
 
   function submitProposal(bytes memory _proposalId, topic _type)
-    _isValidProposal(_proposalId, false)
+    _isActiveProposal(_proposalId, false)
   private {
     emit Proposition(_proposalId, msg.sender, _type);
 
@@ -170,7 +180,7 @@ contract DAO {
   }
 
   function createBallot(bytes memory _proposalId)
-    _isValidProposal(_proposalId, true)
+    _isActiveProposal(_proposalId, true)
     _isActiveBallot(_proposalId, false)
     _isVotable(_proposalId, false)
   private {
@@ -181,7 +191,7 @@ contract DAO {
 
   function vote(bytes memory _proposalId, bytes32 _choice, bool _listing)
     _isActiveListing(string(_proposalId), _listing)
-    _isValidProposal(_proposalId, true)
+    _isActiveProposal(_proposalId, true)
     _isActiveBallot(_proposalId, true)
     _isVotable(_proposalId, true)
   public {
@@ -211,6 +221,7 @@ contract DAO {
     uint256 rejections = ballots[_proposalId].negative;
 
     if(approvals >= rejections) execute(_proposalId);
+    else proposals[_proposalId] = NEG;
 
     emit Outcome(_proposalId, approvals, rejections);
   }
@@ -223,6 +234,7 @@ contract DAO {
     else if (proposition.variety == topic.action) makeTransaction(proposition);
 
     committee[proposition.proposee].reputation++;
+    proposals[_proposalId] = POS;
     delete ballots[_proposalId];
   }
 
