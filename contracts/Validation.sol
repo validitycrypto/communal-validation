@@ -1,13 +1,20 @@
 pragma solidity ^0.6.4;
 
-import "@openzeppelin/contracts/math/SafeMath.sol";
-
 contract Validation {
 
-  using SafeMath for uint;
+  enum role { engineer, designer, analyst, lawyer, executive }
 
-  bytes32 constant POS = 0x506f736974697665000000000000000000000000000000000000000000000000;
-  bytes32 constant NEU = 0x4e65757472616c00000000000000000000000000000000000000000000000000;
-  bytes32 constant NEG = 0x4e65676174697665000000000000000000000000000000000000000000000000;
+  struct Reviewer {
+    uint256 reviews;
+    string title;
+    role forte;
+  }
+
+  mapping (address => Reviewer) public reviewers;
+
+  function isPeerReviewer(address _account)
+  public view returns (bool) {
+    return bytes(reviewers[_account].title).length != 0;
+  }
 
 }

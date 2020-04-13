@@ -6,7 +6,6 @@ import "@openzeppelin/contracts/math/SafeMath.sol";
 contract DAO {
 
   using SafeMath for uint256;
-  using SafeMath for uint256;
 
   bytes32 constant POS = 0x506f736974697665000000000000000000000000000000000000000000000000;
   bytes32 constant NEU = 0x4e65757472616c00000000000000000000000000000000000000000000000000;
@@ -31,9 +30,11 @@ contract DAO {
   }
 
   struct Proposal {
+    uint256 withdrawal;
     bytes32 ipfsHash;
     address proposee;
     address target;
+    bytes metadata;
     topic variety;
     bool action;
   }
@@ -82,12 +83,6 @@ contract DAO {
     _;
   }
 
-  modifier _isCommitteeMember(address _account, bool _state) {
-    if(_state) require(committee[_account].blockNumber != 0);
-    else require(committee[_account].blockNumber == 0);
-    _;
-  }
-
   modifier _isValidProposal(bytes memory _proposalId, bool _state) {
     if(_state) require(proposals[_proposalId] == NEU);
     else require(proposals[_proposalId] == 0x0);
@@ -110,9 +105,16 @@ contract DAO {
     else return committeeCount.sub(1).div(2);
   }
 
+  function isCommitteeMember(address _account, bool _state)
+  public returns (bool) {
+    if(_state) return committee[_account].blockNumber != 0;
+    else return committee[_account].blockNumber == 0;
+  }
+
   function addCommitteeMember(address _individual)
-    _isCommitteeMember(_individual, false)
   private {
+    require(isCommitteeMember(_individual, false));
+
     committee[_individual].roleIndex = committeeMembers.length;
     committee[_individual].blockNumber = block.number;
     committee[_individual].reputation++;
@@ -120,8 +122,9 @@ contract DAO {
   }
 
   function removeCommitteeMember(address _individual)
-    _isCommitteeMember(_individual, true)
   private {
+    require(isCommitteeMember(_individual, true));
+
     uint256 replacementIndex = committee[_individual].roleIndex;
     uint256 lastIndex = committeeMembers.length-1;
 
@@ -139,12 +142,14 @@ contract DAO {
     _isValidProposal(_proposalId, false)
   private {
     emit Proposition(_proposalId, msg.sender, _type);
+
     proposals[_proposalId] = NEU;
   }
 
   function createProposal(Proposal memory _proposal, string memory _listing)
-    _isCommitteeMember(msg.sender, true)
   public {
+    require(isCommitteeMember(msg.sender, true));
+
     _proposal.proposee = msg.sender;
     bytes memory proposalId;
 
@@ -170,20 +175,22 @@ contract DAO {
     _isVotable(_proposalId, false)
   private {
     ballots[_proposalId].expiryBlock = block.number.add(1000);
+
     emit Poll(_proposalId);
   }
 
   function vote(bytes memory _proposalId, bytes32 _choice, bool _listing)
     _isActiveListing(string(_proposalId), _listing)
-    _isCommitteeMember(msg.sender, true)
     _isValidProposal(_proposalId, true)
     _isActiveBallot(_proposalId, true)
     _isVotable(_proposalId, true)
   public {
+    require(isCommitteeMember(msg.sender, true));
+
     if(_choice == POS) {
-      ballots[_proposalId].positive = getTotal(_proposalId, true);
+      ballots[_proposalId].positive = getVotingWeight(_proposalId, true);
     } else if(_choice == NEG) {
-      ballots[_proposalId].negative = getTotal(_proposalId, false);
+      ballots[_proposalId].negative = getVotingWeight(_proposalId, false);
     } else revert();
 
     ballots[_proposalId].verdict[msg.sender] = _choice;
@@ -194,11 +201,11 @@ contract DAO {
  }
 
   function concludeVote(bytes memory _proposalId)
-    _isCommitteeMember(msg.sender, true)
     _isActiveBallot(_proposalId, true)
     _isVotable(_proposalId, false)
   public {
     require(getQuorum() <= ballots[_proposalId].participants);
+    require(isCommitteeMember(msg.sender, true));
 
     uint256 approvals = ballots[_proposalId].positive;
     uint256 rejections = ballots[_proposalId].negative;
@@ -206,7 +213,6 @@ contract DAO {
     if(approvals >= rejections) execute(_proposalId);
 
     emit Outcome(_proposalId, approvals, rejections);
-    delete ballots[_proposalId];
   }
 
   function execute(bytes memory _proposalId) private {
@@ -217,9 +223,13 @@ contract DAO {
     else if (proposition.variety == topic.action) makeTransaction(proposition);
 
     committee[proposition.proposee].reputation++;
+    delete ballots[_proposalId];
   }
 
-  function makeTransaction(Proposal memory _proposal) private { }
+  function makeTransaction(Proposal memory _proposal)
+  private {
+    return _proposal.target.call.value(_proposal.withdrawal)(_proposal.metadata);
+  }
 
   function createListing(string memory _subject)
     _isActiveListing(_subject, false)
@@ -263,7 +273,7 @@ contract DAO {
     listings[string(_subject)].ballot = true;
   }
 
-  function getTotal(bytes memory _proposalId, bool _option)
+  function getVotingWeight(bytes memory _proposalId, bool _option)
   private returns (uint256) {
     uint256 reputation = committee[msg.sender].reputation;
 
