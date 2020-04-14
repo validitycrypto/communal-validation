@@ -1,6 +1,6 @@
 pragma solidity ^0.6.4;
 
-import './interfaces/IDAO.sol';
+import '../interfaces/IDAO.sol';
 
 contract Validation {
 
@@ -117,11 +117,13 @@ contract Validation {
   public {
     require(isPeerReviewer(msg.sender, true));
 
+    bytes documentHash = getDocumentHash(_listing);
+
     if(_decision == POS) critque[_listing].accept++;
     else if(_decision == NEG) critque[_listing].reject++;
     else revert();
 
-    emit Vote(getDocumentHash(_listing), msg.sender, _decision, _ipfsHash);
+    emit Vote(documentHash, msg.sender, _decision, _ipfsHash);
     critque[_listing].verdict[msg.sender] = _decision;
   }
 
@@ -139,7 +141,7 @@ contract Validation {
       reviews[_listing] = documentHash
       startSentiment(_listing);
     }
-    
+
     emit Result(documentHash, accepts, rejects);
     delete critque[_listing];
   }
@@ -150,7 +152,10 @@ contract Validation {
 
   function getDocumentHash(string _listing)
   public view returns (bytes) {
-    return critque[_listing].documentHash;
+    bytes critqueHash = critque[_listing].documentHash;
+    bytes reviewHash = reviews[_listing];
+
+    critqueHash != 0x0 ? return critqueHash : return reviewHash;
   }
 
   event Vote(string listing, address indexed voter, bool decision, bytes32 ipfsHash);

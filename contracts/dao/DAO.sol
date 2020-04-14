@@ -1,9 +1,11 @@
 pragma solidity ^0.6.4;
 pragma experimental ABIEncoderV2;
 
-import "@openzeppelin/contracts/math/SafeMath.sol";
+import "../libs/SafeMath.sol";
+import "./Committee.sol";
+import "./Registry.sol";
 
-contract DAO {
+contract DAO is Committee, Registry {
 
   using SafeMath for uint256;
 
@@ -21,14 +23,6 @@ contract DAO {
     uint256 positive;
   }
 
-  struct Listing {
-    mapping (address => bool) endorsers;
-    uint16 endorsements;
-    uint256 bid;
-    bool ballot;
-    bool status;
-  }
-
   struct Proposal {
     uint256 withdrawal;
     bytes32 ipfsHash;
@@ -39,34 +33,9 @@ contract DAO {
     bool action;
   }
 
-  struct Member {
-    uint256 blockNumber;
-    uint256 roleIndex;
-    uint256 reputation;
-  }
-
-  mapping (address => Member) public committee;
-
-  mapping (string => Listing) public listings;
-
   mapping (bytes => bytes32) public proposals;
 
   mapping (bytes => Ballot) public ballots;
-
-  address[] public committeeMembers;
-
-  constructor() public {
-    committee[msg.sender].reputation = 99; // Founders Shares
-    addCommitteeMember(msg.sender);
-  }
-
-  modifier _isActiveListing(string memory _subject, bool _state) {
-    if(_state) {
-      require(listings[_subject].ballot && !listings[_subject].status);
-    } else {
-      require(!listings[_subject].ballot && !listings[_subject].status);
-    } _;
-  }
 
   modifier _isVotable(bytes memory _proposalId, bool _state) {
     if(_state) {
@@ -89,46 +58,7 @@ contract DAO {
     _;
   }
 
-  modifier _isValidListing(string memory _subject, bool _state) {
-    if(_state) require(listings[_subject].endorsements != 0);
-    else require(listings[_subject].endorsements == 0);
-    _;
-  }
-
   modifier _isVerifiedUser(address _account) { _; }
-
-  function isCommitteeMember(address _account, bool _state)
-  public returns (bool) {
-    if(_state) return committee[_account].blockNumber != 0;
-    else return committee[_account].blockNumber == 0;
-  }
-
-  function addCommitteeMember(address _individual)
-  private {
-    require(isCommitteeMember(_individual, false));
-
-    committee[_individual].roleIndex = committeeMembers.length;
-    committee[_individual].blockNumber = block.number;
-    committee[_individual].reputation++;
-    committeeMembers.push(_individual);
-  }
-
-  function removeCommitteeMember(address _individual)
-  private {
-    require(isCommitteeMember(_individual, true));
-
-    uint256 replacementIndex = committee[_individual].roleIndex;
-    uint256 lastIndex = committeeMembers.length-1;
-
-    committeeMembers[replacementIndex] = committeeMembers[lastIndex];
-    delete committee[_individual];
-    committeeMembers.pop();
-  }
-
-  function changeCommittee(Proposal memory _proposal) private {
-    if(!_proposal.action) removeCommitteeMember(_proposal.target);
-    else if(_proposal.action) addCommitteeMember(_proposal.target);
-  }
 
   function submitProposal(bytes memory _proposalId, topic _type)
     _isActiveProposal(_proposalId, false)
@@ -225,49 +155,6 @@ contract DAO {
     return _proposal.target.call.value(_proposal.withdrawal)(_proposal.metadata);
   }
 
-  function createListing(string memory _subject)
-    _isActiveListing(_subject, false)
-    _isValidListing(_subject, false)
-  public payable {
-    require(bytes(_subject).length != 0);
-
-    listings[_subject].endorsers[msg.sender] = true;
-    listings[_subject].bid = msg.value;
-    listings[_subject].endorsements++;
-
-    emit List(_subject, msg.sender, msg.value);
-  }
-
-  function fundListing(string memory _subject)
-    _isValidListing(_subject, true)
-  public payable {
-    uint256 existingBid = listings[_subject].bid;
-
-    listings[_subject].bid = existingBid.add(msg.value);
-
-    emit Endowment(_subject, msg.sender, msg.value);
-  }
-
-  function endorseListing(string memory _subject)
-    _isValidListing(_subject, true)
-    _isVerifiedUser(msg.sender)
-  public {
-    require(!listings[_subject].endorsers[msg.sender]);
-
-    listings[_subject].endorsers[msg.sender] = true;
-    listings[_subject].endorsements++;
-
-    emit Endorsement(_subject, msg.sender);
-  }
-
-  function pushListing(bytes memory _subject)
-    _isActiveListing(string(_subject), true)
-    _isValidListing(string(_subject), true)
-  private {
-    listings[string(_subject)].ballot = false;
-    listing[string(_subject)].status = true;
-  }
-
   function getVotingWeight(bytes memory _proposalId, bool _option)
   private returns (uint256) {
     uint256 reputation = committee[msg.sender].reputation;
@@ -305,13 +192,7 @@ contract DAO {
 
   event Outcome(bytes proposalId, uint256 approvals, uint256 rejections);
 
-  event Endowment(string listing, address indexed endowee, uint256 bid);
-
   event Vote(bytes proposalId, address indexed member, bytes32 option);
-
-  event List(string listing, address indexed proposee, uint256 bid);
-
-  event Endorsement(string listing, address indexed endorsee);
 
   event Poll(bytes proposalId);
 
