@@ -97,28 +97,10 @@ contract DAO {
 
   modifier _isVerifiedUser(address _account) { _; }
 
-  function getQuorum()
-  public view returns (uint) {
-    uint256 committeeCount = committeeMembers.length;
-
-    if(committeeCount % 2 == 0) return committeeCount.div(2);
-    else return committeeCount.sub(1).div(2);
-  }
-
   function isCommitteeMember(address _account, bool _state)
   public returns (bool) {
     if(_state) return committee[_account].blockNumber != 0;
     else return committee[_account].blockNumber == 0;
-  }
-
-  function getTargetAddress(bytes _proposalId)
-  public view returns (address) {
-    return proposals[_proposalId].target;
-  }
-
-  function getProposalState(bytes _proposalId)
-  public view returns (bytes32) {
-    return proposals[_proposalId];
   }
 
   function addCommitteeMember(address _individual)
@@ -279,10 +261,11 @@ contract DAO {
   }
 
   function pushListing(bytes memory _subject)
-    _isActiveListing(string(_subject), false)
+    _isActiveListing(string(_subject), true)
     _isValidListing(string(_subject), true)
   private {
-    listings[string(_subject)].ballot = true;
+    listings[string(_subject)].ballot = false;
+    listing[string(_subject)].status = true;
   }
 
   function getVotingWeight(bytes memory _proposalId, bool _option)
@@ -291,6 +274,31 @@ contract DAO {
 
     if(_option) return ballots[_proposalId].positive.add(reputation);
     else return ballots[_proposalId].negative.add(reputation);
+  }
+
+  function getQuorum()
+  public view returns (uint) {
+    uint256 committeeCount = committeeMembers.length;
+
+    if(committeeCount % 2 == 0) return committeeCount.div(2);
+    else return committeeCount.sub(1).div(2);
+  }
+
+  function getProposalTopic(bytes _proposalId)
+  public view returns (topic) {
+    Proposal memory proposition = abi.decode(_proposalId, (Proposal));
+    return proposition.variety;
+  }
+
+  function getTargetAddress(bytes _proposalId)
+  public view returns (address) {
+    Proposal memory proposition = abi.decode(_proposalId, (Proposal));
+    return proposition.target;
+  }
+
+  function getProposalState(bytes _proposalId)
+  public view returns (bytes32) {
+    return proposals[_proposalId];
   }
 
   event Proposition(bytes proposalId, address indexed proposee, topic variant);

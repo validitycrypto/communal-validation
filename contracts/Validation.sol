@@ -8,13 +8,23 @@ contract Validation {
   bytes32 constant NEU = 0x4e65757472616c00000000000000000000000000000000000000000000000000;
   bytes32 constant NEG = 0x4e65676174697665000000000000000000000000000000000000000000000000;
 
+  struct Review {
+    mapping (address => bytes32) verdict;
+    uint256 expiryBlock;
+    bytes documentHash;
+    uint256 accept;
+    uint256 reject;
+  }
+
   mapping (address => bytes32) public reviewers;
   mapping (string => bytes) public reviews;
+  mapping (bytes => Review) public critque;
 
   constructor() public { }
 
   modifier _isAuthor(bytes _proposalId) {
     require(DAO.getTargetAddress(_proposalId) == msg.sender));
+    require(DAO.getProposalTopic(_proposalId) == 0);
     _;
   }
 
@@ -25,6 +35,16 @@ contract Validation {
 
   modifier _isActiveProposal(bytes _proposalId) {
     require(DAO.getProposalState(_proposalId) == NEU));
+    _;
+  }
+
+  modifier _isReviewable(string _listing) {
+    if(_state) {
+      require(critque[_listing].verdict[msg.sender] ==  0x0);
+      requre(critque[_listing].expiryBlock > block.number);
+    } else {
+      requre(critque[_listing].expiryBlock < block.number);
+    }
     _;
   }
 
@@ -85,20 +105,62 @@ contract Validation {
     _isPassedProposal(bytes(string))
     _isAuthor(_proposalId)
   public {
+    critque[_listing].expiryBlock = block.number.add(1000);
+    critque[_listing].documentHash = documentHash;
+
     emit Submit(_listing, _documentHash, msg.sender);
-    documents[_documentHash] = NEU;
   }
 
-  function review(string _listing)
-    _isActiveReview(_listing, false)
+  function review(string _listing, bytes32 _decision, bytes32 ipfsHash)
+    _isActiveReview(_listing, true)
+    _isReviewable(_listing, true)
   public {
     require(isPeerReviewer(msg.sender, true));
+
+    if(_decision == POS) critque[_listing].accept++;
+    else if(_decision == NEG) critque[_listing].reject++;
+    else revert();
+
+    emit Vote(getDocumentHash(_listing), msg.sender, _decision, _ipfsHash);
+    critque[_listing].verdict[msg.sender] = _decision;
   }
 
-  event Submit(string _listing, bytes _documentHash, address _author);
+  function finaliseDocument(string _listing)
+    _isActiveReview(_listing, true)
+    _isReviewable(_listing, false)
+  public {
+    require(isCommitteeMember(msg.sender, true));
 
-  event Outcome(address _reviewee, bool _outcome);
+    bytes documentHash = getDocumentHash(_listing);
+    uint256 rejects = critque[_listing].rejects;
+    uint256 accepts = critque[_listing].accept;
 
-  event Propose(address indexed _proposee);
+    if(accepts => rejects) {
+      reviews[_listing] = documentHash
+      startSentiment(_listing);
+    }
+    
+    emit Result(documentHash, accepts, rejects);
+    delete critque[_listing];
+  }
+
+  function startSentiment(string _listing)
+  private {
+  }
+
+  function getDocumentHash(string _listing)
+  public view returns (bytes) {
+    return critque[_listing].documentHash;
+  }
+
+  event Vote(string listing, address indexed voter, bool decision, bytes32 ipfsHash);
+
+  event Result(bytes documentHash, uint256 accepts, uint256 rejects);
+
+  event Submit(string listing, bytes _documentHash, address author);
+
+  event Outcome(address indexed reviewee, bool outcome);
+
+  event Propose(address indexed proposee);
 
 }
