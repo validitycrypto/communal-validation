@@ -45,9 +45,4 @@ contract Committee {
     committeeMembers.pop();
   }
 
-  function changeCommittee(Proposal memory _proposal) private {
-    if(!_proposal.action) removeCommitteeMember(_proposal.target);
-    else if(_proposal.action) addCommitteeMember(_proposal.target);
-  }
-
 }

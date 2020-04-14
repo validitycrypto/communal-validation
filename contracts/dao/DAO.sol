@@ -3,9 +3,8 @@ pragma experimental ABIEncoderV2;
 
 import "../libs/SafeMath.sol";
 import "./Committee.sol";
-import "./Registry.sol";
 
-contract DAO is Committee, Registry {
+contract DAO is Committee {
 
   using SafeMath for uint256;
 
@@ -13,7 +12,7 @@ contract DAO is Committee, Registry {
   bytes32 constant NEU = 0x4e65757472616c00000000000000000000000000000000000000000000000000;
   bytes32 constant NEG = 0x4e65676174697665000000000000000000000000000000000000000000000000;
 
-  enum topic { committee, listing, action }
+  enum topic { committee, reviewer, listing, action }
 
   struct Ballot {
     mapping (address => bytes32) verdict;
@@ -153,6 +152,11 @@ contract DAO is Committee, Registry {
   function makeTransaction(Proposal memory _proposal)
   private {
     return _proposal.target.call.value(_proposal.withdrawal)(_proposal.metadata);
+  }
+
+  function changeCommittee(Proposal memory _proposal) private {
+    if(!_proposal.action) removeCommitteeMember(_proposal.target);
+    else if(_proposal.action) addCommitteeMember(_proposal.target);
   }
 
   function getVotingWeight(bytes memory _proposalId, bool _option)

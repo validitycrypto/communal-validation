@@ -5,6 +5,8 @@ contract Registry {
   struct Listing {
     mapping (address => bool) endorsers;
     uint16 endorsements;
+    bytes documentHash;
+    uint64 rating;
     uint256 bid;
     bool ballot;
     bool status;
