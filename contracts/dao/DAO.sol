@@ -1,7 +1,7 @@
 pragma solidity ^0.6.4;
 pragma experimental ABIEncoderV2;
 
-import "../libs/SafeMath.sol";
+import "../lib/SafeMath.sol";
 import "./Committee.sol";
 
 contract DAO is Committee {
