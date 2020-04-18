@@ -63,10 +63,28 @@ contract Sentiment is PeerReview {
     _isActiveSentiment(_listing, true)
     _isValidSentiment(_listing, true)
   public {
-    bytes32 memory id = ERC20.validityId(msg.sender);
+    bytes32 memory id = ERC20d.validityId(msg.sender);
     uint256 weight = getVotingWeight(id);
 
+    if(_choice == POS) {
+      ballots[_listing].positive = ballots[_listing].positive.add(weight)'
+    } else if (_choice == NEU) {
+      ballots[_listing].neutral = ballots[_listing].neutral.add(weight);
+    } else if (_choice == NEG) {
+      ballots[_listing].negative = ballots[_listing].negative.add(weight);
+    }
+
     return ERC20d.validationEvent(id, bytes32(listing), _choice, weight);
+  }
+
+  function claimReward()
+    _isActiveSentiment(_listing, false)
+    _isValidSentiment(_listing, true)
+  public {
+    bytes32 id = ERC20.validityId(msg.sender);
+    uint256 reward = tokenReward();
+
+    ERC20d.validationReward(id, msg.sender, reward);
   }
 
   function getVotingWeight(bytes32 _id)
@@ -75,5 +93,7 @@ contract Sentiment is PeerReview {
 
     return tokenBalance * (ERC20d.viability(_id) / 100);
   }
+
+  function tokenReward() public view returns (uint256) {}
 
 }
