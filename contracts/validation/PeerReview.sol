@@ -1,12 +1,8 @@
 pragma solidity ^0.6.4;
 
-import '../interfaces/IDAO.sol';
+import "./Registry.sol";
 
-contract PeerReview {
-
-  bytes32 constant POS = 0x506f736974697665000000000000000000000000000000000000000000000000;
-  bytes32 constant NEU = 0x4e65757472616c00000000000000000000000000000000000000000000000000;
-  bytes32 constant NEG = 0x4e65676174697665000000000000000000000000000000000000000000000000;
+contract PeerReview is Registry {
 
   struct Review {
     mapping (address => bytes32) verdict;
@@ -14,12 +10,11 @@ contract PeerReview {
     bytes documentHash;
     uint256 accept;
     uint256 reject;
+    uint32 rating;
   }
 
   mapping (address => bytes32) public reviewers;
   mapping (string => Review) public reviews;
-
-  constructor() public { }
 
   modifier _isReviewable(string _listing, bool _state) {
     if(_state) {
@@ -34,16 +29,6 @@ contract PeerReview {
   modifier _isAuthor(bytes _proposalId) {
     require(DAO.getTargetAddress(_proposalId) == msg.sender));
     require(DAO.getProposalTopic(_proposalId) == 1);
-    _;
-  }
-
-  modifier _isPassedProposal(bytes _proposalId) {
-    require(DAO.getProposalState(_proposalId) == POS));
-    _;
-  }
-
-  modifier _isActiveProposal(bytes _proposalId) {
-    require(DAO.getProposalState(_proposalId) == NEU));
     _;
   }
 
@@ -108,6 +93,7 @@ contract PeerReview {
   public {
     reviews[_listing].expiryBlock = block.number.add(1000);
     reviews[_listing].documentHash = documentHash;
+    reviews[_listing].rating = _rating;
 
     emit Submit(_listing, _rating, _documentHash, msg.sender);
   }

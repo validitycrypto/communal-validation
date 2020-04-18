@@ -1,14 +1,22 @@
 pragma solidity ^0.6.4;
 
+import '../interfaces/IDAO.sol';
+
 contract Registry {
+
+  bytes32 constant POS = 0x506f736974697665000000000000000000000000000000000000000000000000;
+  bytes32 constant NEU = 0x4e65757472616c00000000000000000000000000000000000000000000000000;
+  bytes32 constant NEG = 0x4e65676174697665000000000000000000000000000000000000000000000000;
+
+  IDAO public DAO;
 
   struct Listing {
     mapping (address => bool) endorsers;
     uint16 endorsements;
     bytes documentHash;
-    uint64 rating;
+    uint32 rating;
     uint256 bid;
-    bool ballot;
+    bool active;
     bool status;
   }
 
@@ -16,9 +24,9 @@ contract Registry {
 
   modifier _isActiveListing(string memory _subject, bool _state) {
     if(_state) {
-      require(listings[_subject].ballot && !listings[_subject].status);
+      require(listings[_subject].active && !listings[_subject].status);
     } else {
-      require(!listings[_subject].ballot && !listings[_subject].status);
+      require(!listings[_subject].active && !listings[_subject].status);
     } _;
   }
 
@@ -28,7 +36,26 @@ contract Registry {
     _;
   }
 
+  modifier _isPassedProposal(bytes _proposalId) {
+    require(DAO.getProposalState(_proposalId) == POS));
+    _;
+  }
+
+  modifier _isActiveProposal(bytes _proposalId) {
+    require(DAO.getProposalState(_proposalId) == NEU));
+    _;
+  }
+
+  modifier _isCommitteeBody() {
+    require(msg.sender == address(DAO));
+    _;
+  }
+
   modifier _isVerifiedUser(address _account) { _; }
+
+  constructor(address _daoAddress) public {
+    DAO = IDAO(_daoAddress);
+  }
 
   function createListing(string memory _subject)
     _isActiveListing(_subject, false)
@@ -66,11 +93,18 @@ contract Registry {
   }
 
   function pushListing(bytes memory _subject)
-    _isActiveListing(string(_subject), true)
     _isValidListing(string(_subject), true)
   private {
-    listings[string(_subject)].ballot = false;
-    listing[string(_subject)].status = true;
+    listings[_subject].active = true;
+  }
+
+  function rateListing(bytes memory _subject, uint32 _rating)
+    _isActiveListing(string(_subject), true)
+    _isValidListing(string(_subject), true)
+    _isPassedProposal(string(_subject))
+  private {
+    listings[string(_subject)].rating = _rating;
+    listings[string(_subject)].status = true;
   }
 
   event Endowment(string listing, address indexed endowee, uint256 bid);

@@ -1,7 +1,8 @@
 pragma solidity ^0.6.4;
 pragma experimental ABIEncoderV2;
 
-import "../lib/SafeMath.sol";
+import "./interfaces/IRegistry.sol";
+import "./lib/SafeMath.sol";
 import "./Committee.sol";
 
 contract DAO is Committee {
@@ -13,6 +14,8 @@ contract DAO is Committee {
   bytes32 constant NEG = 0x4e65676174697665000000000000000000000000000000000000000000000000;
 
   enum topic { committee, reviewer, listing, action }
+
+  IRegistry public REG;
 
   struct Ballot {
     mapping (address => bytes32) verdict;
@@ -59,6 +62,10 @@ contract DAO is Committee {
 
   modifier _isVerifiedUser(address _account) { _; }
 
+  constructor(address _registryAddress) public {
+    REG = IRegistry(_registryAddress);
+  }
+
   function submitProposal(bytes memory _proposalId, topic _type)
     _isActiveProposal(_proposalId, false)
   private {
@@ -83,7 +90,7 @@ contract DAO is Committee {
       proposalId = abi.encode(_proposal);
     } else if(_proposal.variety == topic.listing) {
       proposalId = abi.encode(_listing);
-      pushListing(proposalId);
+      REG.submitProposal(proposalId);
     }
 
     submitProposal(proposalId, _proposal.variety);
@@ -141,7 +148,7 @@ contract DAO is Committee {
     Proposal memory proposition = abi.decode(_proposalId, (Proposal));
 
     if(proposition.variety == topic.committee) changeCommittee(proposition);
-    else if(proposition.variety == topic.listing) pushListing(_proposalId);
+    else if(proposition.variety == topic.listing) REG.pushListing(_proposalId);
     else if (proposition.variety == topic.action) makeTransaction(proposition);
 
     committee[proposition.proposee].reputation++;
