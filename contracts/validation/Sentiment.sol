@@ -50,7 +50,6 @@ contract Sentiment is PeerReview {
     }
 
     emit Result(documentHash, accepts, rejects);
-    delete reviews[_listing];
   }
 
   function startSentiment(string memory _listing)
@@ -66,6 +65,8 @@ contract Sentiment is PeerReview {
     bytes32 memory id = ERC20d.validityId(msg.sender);
     uint256 weight = getVotingWeight(id);
 
+    ballots[_listing].verdict[msg.sender] = _choice;
+
     if(_choice == POS) {
       ballots[_listing].positive = ballots[_listing].positive.add(weight)'
     } else if (_choice == NEU) {
@@ -77,14 +78,25 @@ contract Sentiment is PeerReview {
     return ERC20d.validationEvent(id, bytes32(listing), _choice, weight);
   }
 
-  function claimReward()
+  function finaliseRating(string _listing)
     _isActiveSentiment(_listing, false)
     _isValidSentiment(_listing, true)
   public {
-    bytes32 id = ERC20.validityId(msg.sender);
-    uint256 reward = tokenReward();
+    uint32 sentimentRating = quantifyRating(_listing);
+    uint32 reportRating = reviews[_listing].rating;
 
-    ERC20d.validationReward(id, msg.sender, reward);
+    rateListing(reportRating.add(sentimentRating) / 2);
+  }
+
+  function claimReward(string _listing)
+    _isActiveSentiment(_listing, false)
+    _isValidSentiment(_listing, true)
+  public {
+    require(ballots[_listing].verdict[msg.sender] != 0x0);
+
+    bytes32 id = ERC20.validityId(msg.sender);
+
+    ERC20d.validationReward(id, msg.sender, tokenReward());
   }
 
   function getVotingWeight(bytes32 _id)
@@ -92,6 +104,17 @@ contract Sentiment is PeerReview {
     uint256 tokenBalance = ERC20d.balanceOf(ERC20d.getAddress(_id));
 
     return tokenBalance * (ERC20d.viability(_id) / 100);
+  }
+
+  function quantifyRating(string _listing)
+  public view returns (uint32) {
+    uint256 positive = ballots[_listing].positive;
+    uint256 neutral = ballots[_listing].neutral;
+    uint256 negative = ballots[_listing].negative;
+    uint256 total = positive.add(negative).add(neutral);
+
+    return ((positive / total) * 100)
+    .add((neutral / total) * 100).add((negative / total) * 100) / 3
   }
 
   function tokenReward() public view returns (uint256) {}
