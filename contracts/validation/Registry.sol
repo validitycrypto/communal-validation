@@ -1,8 +1,12 @@
 pragma solidity ^0.6.4;
 
-import '../interfaces/IDAO.sol';
+import './interfaces/IDAO.sol';
+import './lib/SafeMath.sol';
 
 contract Registry {
+
+  using SafeMath for uint256;
+  using SafeMath for uint32;
 
   bytes32 constant POS = 0x506f736974697665000000000000000000000000000000000000000000000000;
   bytes32 constant NEU = 0x4e65757472616c00000000000000000000000000000000000000000000000000;
@@ -94,6 +98,7 @@ contract Registry {
 
   function pushListing(bytes memory _subject)
     _isValidListing(string(_subject), true)
+    _isActiveProposal(_subject)
   private {
     listings[_subject].active = true;
   }
@@ -101,7 +106,7 @@ contract Registry {
   function rateListing(bytes memory _subject, uint32 _rating)
     _isActiveListing(string(_subject), true)
     _isValidListing(string(_subject), true)
-    _isPassedProposal(string(_subject))
+    _isPassedProposal(_subject)
   private {
     listings[string(_subject)].rating = _rating;
     listings[string(_subject)].status = true;

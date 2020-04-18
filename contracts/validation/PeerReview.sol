@@ -114,25 +114,6 @@ contract PeerReview is Registry {
     reviews[_listing].verdict[msg.sender] = _decision;
   }
 
-  function finaliseDocument(string _listing)
-    _isActiveReview(_listing, true)
-    _isReviewable(_listing, false)
-  public {
-    require(isCommitteeMember(msg.sender, true));
-
-    bytes documentHash = getDocumentHash(_listing);
-    uint256 rejects = reviews[_listing].rejects;
-    uint256 accepts = reviews[_listing].accept;
-
-    if(accepts => rejects) {
-      reviews[_listing] = documentHash
-      startSentiment(_listing);
-    }
-
-    emit Result(documentHash, accepts, rejects);
-    delete reviews[_listing];
-  }
-
   function getDocumentHash(string _listing)
   public view returns (bytes) {
     return reviews[_listing].documentHash;
